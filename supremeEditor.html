@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supreme World Editor</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: Arial, sans-serif;
+      background: #2c3e50;
+      color: white;
+      overflow: hidden;
+    }
+    
+    .editor-container {
+      display: flex;
+      height: 100vh;
+    }
+    
+    .world-view {
+      flex: 1;
+      position: relative;
+      background: #34495e;
+      overflow: hidden;
+    }
+    
+    .world-canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border: 2px solid #ecf0f1;
+      background: #34495e;
+    }
+    
+    .sidebar {
+      width: 300px;
+      background: #34495e;
+      border-left: 2px solid #ecf0f1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    
+    .block-palette {
+      margin-bottom: 30px;
+    }
+    
+    .block-palette h3 {
+      margin-bottom: 15px;
+      color: #ecf0f1;
+      font-size: 18px;
+    }
+    
+    .block-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    
+    .block-option {
+      width: 60px;
+      height: 60px;
+      border: 2px solid #7f8c8d;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+      transition: all 0.2s;
+      background: #2c3e50;
+    }
+    
+    .block-option:hover {
+      border-color: #3498db;
+      transform: scale(1.05);
+    }
+    
+    .block-option.selected {
+      border-color: #e74c3c;
+      background: #e74c3c;
+      transform: scale(1.1);
+    }
+    
+    .block-option.grass {
+      background: #27ae60;
+    }
+    
+    .block-option.brick {
+      background: #8B4513;
+    }
+    
+    .block-option.plank {
+      background: #FFD700;
+    }
+    
+    .block-option.dirt {
+      background: #795548;
+    }
+    
+    .block-option.empty {
+      background: #95a5a6;
+    }
+    
+    .block-option.bush {
+      background: #2ecc71;
+    }
+    
+    .block-option.start {
+      background: #e74c3c;
+    }
+    
+    .block-option.sword {
+      background: #c0c0c0;
+      color: #333;
+      border: 2px solid #666;
+    }
+    
+    .block-option.enemy {
+      background: #e74c3c;
+      color: white;
+      border: 2px solid #c0392b;
+    }
+    
+    .block-option.blueEnemy {
+      background: #3498db;
+      color: white;
+      border: 2px solid #2980b9;
+    }
+    
+    .block-option.slingshot {
+      background: #333;
+      color: #fff;
+      border: 2px solid #666;
+    }
+    
+    .block-option.brownEnemy {
+      background: #8B4513;
+      color: white;
+      border: 2px solid #654321;
+    }
+    
+    .block-option.boulder {
+      background: #8B7355;
+      color: white;
+      border: 2px solid #696969;
+    }
+    
+    .block-option.axe {
+      background: #8B4513;
+      color: white;
+      border: 2px solid #654321;
+    }
+    
+    .block-option.tree {
+      background: #228B22;
+      color: white;
+      border: 2px solid #006400;
+    }
+    
+    .block-option.water {
+      background: #3399ff;
+      border: 2px solid #005577;
+    }
+    
+    .controls {
+      margin-bottom: 30px;
+    }
+    
+    .controls h3 {
+      margin-bottom: 15px;
+      color: #ecf0f1;
+      font-size: 18px;
+    }
+    
+    .control-group {
+      margin-bottom: 15px;
+    }
+    
+    .control-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #bdc3c7;
+    }
+    
+    .control-group input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #7f8c8d;
+      border-radius: 4px;
+      background: #2c3e50;
+      color: white;
+    }
+    
+    .button {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.2s;
+    }
+    
+    .button.primary {
+      background: #3498db;
+      color: white;
+    }
+    
+    .button.primary:hover {
+      background: #2980b9;
+    }
+    
+    .button.success {
+      background: #27ae60;
+      color: white;
+    }
+    
+    .button.success:hover {
+      background: #229954;
+    }
+    
+    .button.danger {
+      background: #e74c3c;
+      color: white;
+    }
+    
+    .button.danger:hover {
+      background: #c0392b;
+    }
+    
+    .info-panel {
+      background: #2c3e50;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    
+    .info-panel h4 {
+      margin-bottom: 10px;
+      color: #ecf0f1;
+    }
+    
+    .info-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+      color: #bdc3c7;
+    }
+    
+    .export-area {
+      margin-top: 20px;
+    }
+    
+    .export-area textarea {
+      width: 100%;
+      height: 150px;
+      padding: 10px;
+      border: 1px solid #7f8c8d;
+      border-radius: 4px;
+      background: #2c3e50;
+      color: white;
+      font-family: monospace;
+      font-size: 12px;
+      resize: vertical;
+    }
+    
+    .save-area {
+      margin-top: 20px;
+    }
+    
+    .save-controls {
+      margin-bottom: 15px;
+    }
+    
+    .saved-worlds {
+      background: #2c3e50;
+      padding: 15px;
+      border-radius: 6px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .saved-worlds h4 {
+      margin-bottom: 10px;
+      color: #ecf0f1;
+    }
+    
+    .saved-world-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      margin-bottom: 5px;
+      background: #34495e;
+      border-radius: 4px;
+      border: 1px solid #7f8c8d;
+    }
+    
+    .saved-world-item:hover {
+      background: #3a4a5e;
+    }
+    
+    .saved-world-name {
+      color: #ecf0f1;
+      font-weight: bold;
+    }
+    
+    .saved-world-date {
+      color: #bdc3c7;
+      font-size: 12px;
+    }
+    
+    .saved-world-actions {
+      display: flex;
+      gap: 5px;
+    }
+    
+    .saved-world-actions button {
+      padding: 4px 8px;
+      font-size: 10px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    
+    .saved-world-actions .load-btn {
+      background: #3498db;
+      color: white;
+    }
+    
+    .saved-world-actions .delete-btn {
+      background: #e74c3c;
+      color: white;
+    }
+    
+    .instructions {
+      background: #2c3e50;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    
+    .instructions h4 {
+      margin-bottom: 10px;
+      color: #ecf0f1;
+    }
+    
+    .instructions ul {
+      list-style-type: none;
+      padding-left: 0;
+    }
+    
+    .instructions li {
+      margin-bottom: 5px;
+      color: #bdc3c7;
+    }
+    
+    .instructions li:before {
+      content: "• ";
+      color: #3498db;
+    }
+  </style>
+</head>
+<body>
+  <div class="editor-container">
+    <div class="world-view">
+      <canvas id="worldCanvas" class="world-canvas" width="600" height="600"></canvas>
+    </div>
+    
+    <div class="sidebar">
+      <div class="instructions">
+        <h4>Controls</h4>
+        <ul>
+          <li>Arrow keys to move around the world</li>
+          <li>Click and drag to place blocks</li>
+          <li>Right-click to remove blocks</li>
+          <li>Select blocks from the palette</li>
+        </ul>
+      </div>
+      
+      <div class="block-palette">
+        <h3>Block Palette</h3>
+        <div class="block-grid">
+          <div class="block-option grass selected" data-type="grass" data-symbol=".">
+            <span>Grass</span>
+          </div>
+          <div class="block-option brick" data-type="brick" data-symbol="X">
+            <span>Brick</span>
+          </div>
+          <div class="block-option plank" data-type="plank" data-symbol="O">
+            <span>Plank</span>
+          </div>
+          <div class="block-option dirt" data-type="dirt" data-symbol="D">
+            <span>Dirt</span>
+          </div>
+          <div class="block-option bush" data-type="bush" data-symbol="B">
+            <span>Bush</span>
+          </div>
+          <div class="block-option empty" data-type="empty" data-symbol="#">
+            <span>Empty</span>
+          </div>
+          <div class="block-option start" data-type="start" data-symbol="S">
+            <span>Start</span>
+          </div>
+          <div class="block-option sword" data-type="sword" data-symbol="W">
+            <span>Sword</span>
+          </div>
+          <div class="block-option enemy" data-type="enemy" data-symbol="E">
+            <span>Enemy</span>
+          </div>
+          <div class="block-option blueEnemy" data-type="blueEnemy" data-symbol="Z">
+            <span>Blue Enemy</span>
+          </div>
+          <div class="block-option slingshot" data-type="slingshot" data-symbol="L">
+            <span>Slingshot</span>
+          </div>
+          <div class="block-option blueHeart" data-type="blueHeart" data-symbol="H">
+            <span>Blue Heart</span>
+          </div>
+          <div class="block-option brownEnemy" data-type="brownEnemy" data-symbol="M">
+            <span>Brown Enemy</span>
+          </div>
+          <div class="block-option boulder" data-type="boulder" data-symbol="O">
+            <span>Boulder</span>
+          </div>
+          <div class="block-option axe" data-type="axe" data-symbol="A">
+            <span>Axe</span>
+          </div>
+          <div class="block-option tree" data-type="tree" data-symbol="T">
+            <span>Tree</span>
+          </div>
+          <div class="block-option water" data-type="water" data-symbol="W">
+            <span>Water</span>
+          </div>
+        </div>
+      </div>
+      
+      <div class="controls">
+        <h3>World Settings</h3>
+        <div class="control-group">
+          <label for="worldWidth">Width:</label>
+          <input type="number" id="worldWidth" value="50" min="10" max="200">
+        </div>
+        <div class="control-group">
+          <label for="worldHeight">Height:</label>
+          <input type="number" id="worldHeight" value="50" min="10" max="200">
+        </div>
+        <button class="button primary" onclick="resizeWorld()">Resize World</button>
+        <button class="button danger" onclick="clearWorld()">Clear World</button>
+      </div>
+      
+      <div class="info-panel">
+        <h4>World Info</h4>
+        <div class="info-item">
+          <span>Size:</span>
+          <span id="worldSize">50 x 50</span>
+        </div>
+        <div class="info-item">
+          <span>Camera X:</span>
+          <span id="cameraX">0</span>
+        </div>
+        <div class="info-item">
+          <span>Camera Y:</span>
+          <span id="cameraY">0</span>
+        </div>
+        <div class="info-item">
+          <span>Selected Block:</span>
+          <span id="selectedBlock">Grass</span>
+        </div>
+      </div>
+      
+      <div class="export-area">
+        <h3>Import/Export World</h3>
+        <button class="button primary" onclick="importWorld()">Import World Data</button>
+        <button class="button success" onclick="exportWorld()">Export World Data</button>
+        <textarea id="exportText" placeholder="World data will appear here when exported..."></textarea>
+      </div>
+      
+      <div class="save-area">
+        <h3>Save World Versions</h3>
+        <div class="save-controls">
+          <input type="text" id="saveName" placeholder="Enter world name..." style="width: 100%; margin-bottom: 10px; padding: 8px; border: 1px solid #7f8c8d; border-radius: 4px; background: #2c3e50; color: white;">
+          <button class="button primary" onclick="saveWorld()">Save World</button>
+          <button class="button danger" onclick="clearSaves()">Clear All Saves</button>
+        </div>
+        <div class="saved-worlds">
+          <h4>Saved Worlds:</h4>
+          <div id="savedWorldsList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('worldCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    // World settings
+    let worldWidth = 50;
+    let worldHeight = 50;
+    let world = [];
+    let selectedBlockType = 'grass';
+    let selectedBlockSymbol = '.';
+    
+    // Camera settings
+    let cameraX = 0;
+    let cameraY = 0;
+    const TILE_SIZE = 12; // Smaller tiles to fit 50x50 on screen
+    
+    // Mouse drag settings
+    let isDragging = false;
+    let lastPlacedX = -1;
+    let lastPlacedY = -1;
+    
+    // Load images
+    const grassImg = new Image();
+    grassImg.src = 'grass.png';
+    const brickImg = new Image();
+    brickImg.src = 'block.jpg';
+    const plankImg = new Image();
+    plankImg.src = 'plank.png';
+    const dirtImg = new Image();
+    dirtImg.src = 'dirt.png';
+    const bushImg = new Image();
+    bushImg.src = 'bush.png';
+    const swordImg = new Image();
+    swordImg.src = 'sword.png';
+    const enemyImg = new Image();
+    enemyImg.src = 'enemy.png';
+    const slingShotImg = new Image();
+    slingShotImg.src = 'slingShot.png';
+    const blueHeartImg = new Image();
+    blueHeartImg.src = 'blueHeart.png';
+    const boulderImg = new Image();
+    boulderImg.src = 'boulder.png';
+    const axeImg = new Image();
+    axeImg.src = 'axe.png';
+    const treeImg = new Image();
+    treeImg.src = 'tree.png';
+    const waterImg = new Image();
+    waterImg.src = 'water.png';
+    
+    // Initialize world
+    function initWorld() {
+      world = [];
+      for (let row = 0; row < worldHeight; row++) {
+        world[row] = [];
+        for (let col = 0; col < worldWidth; col++) {
+          world[row][col] = { base: 'grass', item: null };
+        }
+      }
+      updateInfo();
+    }
+    
+    // Initialize block palette
+    function initBlockPalette() {
+      document.querySelectorAll('.block-option').forEach(option => {
+        option.addEventListener('click', function() {
+          // Remove selected class from all options
+          document.querySelectorAll('.block-option').forEach(o => o.classList.remove('selected'));
+          // Add selected class to clicked option
+          this.classList.add('selected');
+          // Update selected block
+          selectedBlockType = this.dataset.type;
+          selectedBlockSymbol = this.dataset.symbol;
+          document.getElementById('selectedBlock').textContent = this.querySelector('span').textContent;
+        });
+      });
+    }
+    
+    // Handle keyboard input
+    function handleKeyboard() {
+      const keys = {};
+      
+      document.addEventListener('keydown', (e) => {
+        keys[e.key] = true;
+        
+        switch(e.key) {
+          case 'ArrowUp':
+            cameraY = Math.max(0, cameraY - 1);
+            break;
+          case 'ArrowDown':
+            cameraY = Math.min(worldHeight - Math.floor(canvas.height / TILE_SIZE), cameraY + 1);
+            break;
+          case 'ArrowLeft':
+            cameraX = Math.max(0, cameraX - 1);
+            break;
+          case 'ArrowRight':
+            cameraX = Math.min(worldWidth - Math.floor(canvas.width / TILE_SIZE), cameraX + 1);
+            break;
+        }
+        
+        updateInfo();
+        drawWorld();
+      });
+    }
+    
+    // Handle mouse input
+    function handleMouse() {
+      canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        placeBlock(e);
+      });
+      
+      canvas.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+          placeBlock(e);
+        }
+      });
+      
+      canvas.addEventListener('mouseup', () => {
+        isDragging = false;
+        lastPlacedX = -1;
+        lastPlacedY = -1;
+      });
+      
+      canvas.addEventListener('mouseleave', () => {
+        isDragging = false;
+        lastPlacedX = -1;
+        lastPlacedY = -1;
+      });
+      
+      // Right click to remove blocks
+      canvas.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        const worldX = Math.floor(x / TILE_SIZE) + cameraX;
+        const worldY = Math.floor(y / TILE_SIZE) + cameraY;
+        
+        if (worldX >= 0 && worldX < worldWidth && worldY >= 0 && worldY < worldHeight) {
+          world[worldY][worldX].item = null;
+          drawWorld();
+        }
+      });
+    }
+    
+    function placeBlock(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const worldX = Math.floor(x / TILE_SIZE) + cameraX;
+      const worldY = Math.floor(y / TILE_SIZE) + cameraY;
+      if (worldX >= 0 && worldX < worldWidth && worldY >= 0 && worldY < worldHeight) {
+        if (worldX !== lastPlacedX || worldY !== lastPlacedY) {
+          const cell = world[worldY][worldX];
+          if (selectedBlockType === 'start') {
+            // Remove any existing start point first
+            for (let row = 0; row < worldHeight; row++) {
+              for (let col = 0; col < worldWidth; col++) {
+                if (world[row][col].item === 'start') {
+                  world[row][col].item = null;
+                }
+              }
+            }
+            cell.item = 'start';
+          } else if (selectedBlockType === 'sword' || selectedBlockType === 'slingshot') {
+            // Only allow on grass, dirt, or plank
+            if (cell.base === 'grass' || cell.base === 'dirt' || cell.base === 'plank') {
+              cell.item = selectedBlockType;
+            }
+          } else if (selectedBlockType === 'enemy' || selectedBlockType === 'blueEnemy') {
+            cell.item = selectedBlockType;
+          } else if (selectedBlockType === 'empty') {
+            cell.item = null;
+          } else if (selectedBlockType === 'bush') {
+            cell.item = 'bush';
+          } else if (selectedBlockType === 'blueHeart') {
+            cell.item = 'blueHeart';
+          } else if (selectedBlockType === 'brownEnemy') {
+            cell.item = 'brownEnemy';
+          } else if (selectedBlockType === 'boulder') {
+            cell.item = 'boulder';
+          } else if (selectedBlockType === 'axe') {
+            cell.item = 'axe';
+          } else if (selectedBlockType === 'tree') {
+            // Place a 2x2 tree - check if there's enough space
+            if (worldX + 1 < worldWidth && worldY + 1 < worldHeight) {
+              // Check if all 4 tiles are available
+              const canPlace = world[worldY][worldX].item === null &&
+                              world[worldY][worldX + 1].item === null &&
+                              world[worldY + 1][worldX].item === null &&
+                              world[worldY + 1][worldX + 1].item === null;
+              
+              if (canPlace) {
+                // Place tree in all 4 tiles
+                world[worldY][worldX].item = 'tree';
+                world[worldY][worldX + 1].item = 'tree';
+                world[worldY + 1][worldX].item = 'tree';
+                world[worldY + 1][worldX + 1].item = 'tree';
+                
+                // Initialize tree health (3 health for the tree)
+                // Note: In the game, this will be handled by initializeTreeHealth()
+              }
+            }
+          } else {
+            cell.base = selectedBlockType;
+          }
+          lastPlacedX = worldX;
+          lastPlacedY = worldY;
+          drawWorld();
+        }
+      }
+    }
+    
+    // Draw the world
+    function drawWorld() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let row = cameraY; row < Math.min(worldHeight, cameraY + Math.ceil(canvas.height / TILE_SIZE)); row++) {
+        for (let col = cameraX; col < Math.min(worldWidth, cameraX + Math.ceil(canvas.width / TILE_SIZE)); col++) {
+          const cell = world[row][col];
+          const x = (col - cameraX) * TILE_SIZE;
+          const y = (row - cameraY) * TILE_SIZE;
+          // Draw base
+          switch(cell.base) {
+              case 'grass':
+              if (grassImg.complete) ctx.drawImage(grassImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#27ae60'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE); }
+                break;
+              case 'brick':
+              if (brickImg.complete) ctx.drawImage(brickImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#8B4513'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE); }
+                break;
+              case 'plank':
+              if (plankImg.complete) ctx.drawImage(plankImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#FFD700'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE); }
+                break;
+              case 'dirt':
+              if (dirtImg.complete) ctx.drawImage(dirtImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#795548'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE); }
+              break;
+            case 'bush':
+              if (bushImg.complete) ctx.drawImage(bushImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#2ecc71'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE); }
+                break;
+              case 'empty':
+              ctx.clearRect(x, y, TILE_SIZE, TILE_SIZE);
+                break;
+            case 'water':
+              if (waterImg.complete) ctx.drawImage(waterImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#3399ff'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE); }
+                break;
+          }
+          // Draw item
+          switch(cell.item) {
+              case 'start':
+                ctx.fillStyle = '#e74c3c';
+                ctx.beginPath();
+                ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+                ctx.fill();
+              ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                break;
+              case 'sword':
+              if (swordImg.complete) ctx.drawImage(swordImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#c0c0c0'; ctx.fillRect(x + TILE_SIZE/4, y + TILE_SIZE/4, TILE_SIZE/2, TILE_SIZE/2); }
+              break;
+            case 'slingshot':
+              if (slingShotImg.complete) ctx.drawImage(slingShotImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#333'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE); }
+                break;
+              case 'enemy':
+                ctx.fillStyle = '#e74c3c';
+                ctx.beginPath();
+                ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, TILE_SIZE/6, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+              case 'blueEnemy':
+                ctx.fillStyle = '#3498db';
+                ctx.beginPath();
+                ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, TILE_SIZE/6, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            case 'blueHeart':
+              if (blueHeartImg.complete) ctx.drawImage(blueHeartImg, x, y, TILE_SIZE, TILE_SIZE);
+              else { ctx.fillStyle = '#3498db'; ctx.beginPath(); ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2); ctx.fill(); }
+              break;
+            case 'brownEnemy':
+              ctx.fillStyle = '#8B4513';
+              ctx.beginPath();
+              ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, TILE_SIZE/6, 0, Math.PI * 2);
+              ctx.fill();
+              break;
+            case 'boulder':
+              if (boulderImg.complete) ctx.drawImage(boulderImg, x, y, TILE_SIZE, TILE_SIZE);
+              else {
+                ctx.fillStyle = '#8B7355';
+                ctx.beginPath();
+                ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, TILE_SIZE/2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#696969';
+                ctx.beginPath();
+                ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+                ctx.fill();
+              }
+              break;
+            case 'axe':
+              if (axeImg.complete) ctx.drawImage(axeImg, x, y, TILE_SIZE, TILE_SIZE);
+              else {
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(x + TILE_SIZE/4, y + TILE_SIZE/4, TILE_SIZE/2, TILE_SIZE/2);
+                ctx.fillStyle = '#654321';
+                ctx.fillRect(x + TILE_SIZE/3, y + TILE_SIZE/2, TILE_SIZE/6, TILE_SIZE/3);
+              }
+              break;
+            case 'tree':
+              // Draw tree (2x2 size) - only draw on the top-left corner of the tree
+              if (col > 0 && row > 0) {
+                const leftCell = world[row][col - 1];
+                const topCell = world[row - 1][col];
+                const topLeftCell = world[row - 1][col - 1];
+                
+                // Only draw if this is the top-left corner of a 2x2 tree
+                if (leftCell.item === 'tree' && topCell.item === 'tree' && topLeftCell.item === 'tree') {
+                  if (treeImg.complete) {
+                    ctx.drawImage(treeImg, x - TILE_SIZE, y - TILE_SIZE, TILE_SIZE * 2, TILE_SIZE * 2);
+                  } else {
+                    // Fallback tree drawing
+                    ctx.fillStyle = '#8B4513';
+                    ctx.fillRect(x - TILE_SIZE + TILE_SIZE/3, y, TILE_SIZE/3, TILE_SIZE * 2);
+                    ctx.fillStyle = '#228B22';
+                    ctx.beginPath();
+                    ctx.arc(x, y, TILE_SIZE, 0, Math.PI * 2);
+                    ctx.fill();
+                  }
+                }
+              } else if (col === 0 && row === 0) {
+                // Special case for top-left corner of map
+                if (treeImg.complete) {
+                  ctx.drawImage(treeImg, x, y, TILE_SIZE * 2, TILE_SIZE * 2);
+                } else {
+                  // Fallback tree drawing
+                  ctx.fillStyle = '#8B4513';
+                  ctx.fillRect(x + TILE_SIZE/3, y, TILE_SIZE/3, TILE_SIZE * 2);
+                  ctx.fillStyle = '#228B22';
+                  ctx.beginPath();
+                  ctx.arc(x + TILE_SIZE, y + TILE_SIZE, TILE_SIZE, 0, Math.PI * 2);
+                  ctx.fill();
+                }
+              }
+              break;
+          }
+          // Draw bush if item === 'bush' after drawing the base
+          if (cell.item === 'bush') {
+            if (bushImg.complete) ctx.drawImage(bushImg, x, y, TILE_SIZE, TILE_SIZE);
+            else { ctx.fillStyle = '#2ecc71'; ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE); }
+          }
+        }
+      }
+    }
+    
+    // Update info panel
+    function updateInfo() {
+      document.getElementById('worldSize').textContent = `${worldWidth} x ${worldHeight}`;
+      document.getElementById('cameraX').textContent = cameraX;
+      document.getElementById('cameraY').textContent = cameraY;
+    }
+    
+    // Resize world
+    function resizeWorld() {
+      const newWidth = parseInt(document.getElementById('worldWidth').value);
+      const newHeight = parseInt(document.getElementById('worldHeight').value);
+      
+      if (newWidth >= 10 && newWidth <= 200 && newHeight >= 10 && newHeight <= 200) {
+        // Create a new world array with the new dimensions
+        const newWorld = [];
+        for (let row = 0; row < newHeight; row++) {
+          newWorld[row] = [];
+          for (let col = 0; col < newWidth; col++) {
+            if (row < worldHeight && col < worldWidth) {
+              // Copy existing cell if within old bounds
+              newWorld[row][col] = { ...world[row][col] };
+            } else {
+              // Fill new cells with default values
+              newWorld[row][col] = { base: 'grass', item: null };
+            }
+          }
+        }
+        world = newWorld;
+        worldWidth = newWidth;
+        worldHeight = newHeight;
+        updateInfo();
+        drawWorld();
+      }
+    }
+    
+    // Clear world
+    function clearWorld() {
+      if (confirm('Are you sure you want to clear the entire world?')) {
+        initWorld();
+        drawWorld();
+      }
+    }
+    
+    // Import world data
+    function importWorld() {
+      const lines = document.getElementById('exportText').value.trim().split('\n');
+      worldHeight = lines.length;
+      worldWidth = lines[0].length / 2;
+      world = [];
+      for (let row = 0; row < worldHeight; row++) {
+        world[row] = [];
+        for (let col = 0; col < worldWidth; col++) {
+          const baseChar = lines[row][col * 2];
+          const itemChar = lines[row][col * 2 + 1];
+          let base = 'grass';
+          switch(baseChar) {
+            case '.': base = 'grass'; break;
+            case 'O': base = 'plank'; break;
+            case 'D': base = 'dirt'; break;
+            case 'X': base = 'brick'; break;
+            case 'B': base = 'bush'; break;
+            case '#': base = 'empty'; break;
+            case 'W': base = 'water'; break;
+          }
+          let item = null;
+          switch(itemChar) {
+            case 'W': item = 'sword'; break;
+            case 'L': item = 'slingshot'; break;
+            case 'S': item = 'start'; break;
+            case 'E': item = 'enemy'; break;
+            case 'Z': item = 'blueEnemy'; break;
+            case 'B': item = 'bush'; break;
+            case 'H': item = 'blueHeart'; break;
+            case 'M': item = 'brownEnemy'; break;
+            case 'O': item = 'boulder'; break;
+            case 'A': item = 'axe'; break;
+            case 'T': item = 'tree'; break;
+            case '.': item = null; break;
+          }
+          world[row][col] = { base, item };
+          }
+        }
+      updateInfo();
+      drawWorld();
+    }
+    
+    // Export world data
+    function exportWorld() {
+      let exportData = [];
+      for (let row = 0; row < worldHeight; row++) {
+        let rowString = '';
+        for (let col = 0; col < worldWidth; col++) {
+            const cell = world[row][col];
+            // Base: . grass, O plank, D dirt, X brick, B bush, # empty, W water
+            // Item: . none, W sword, L slingshot, S start, E enemy, Z blueEnemy
+            let baseChar = '.';
+            switch(cell.base) {
+              case 'grass': baseChar = '.'; break;
+              case 'plank': baseChar = 'O'; break;
+              case 'dirt': baseChar = 'D'; break;
+              case 'brick': baseChar = 'X'; break;
+              case 'bush': baseChar = 'B'; break;
+              case 'empty': baseChar = '#'; break;
+              case 'water': baseChar = 'W'; break;
+            }
+            let itemChar = '.';
+            switch(cell.item) {
+              case 'sword': itemChar = 'W'; break;
+              case 'slingshot': itemChar = 'L'; break;
+              case 'start': itemChar = 'S'; break;
+              case 'enemy': itemChar = 'E'; break;
+              case 'blueEnemy': itemChar = 'Z'; break;
+              case 'bush': itemChar = 'B'; break;
+              case 'blueHeart': itemChar = 'H'; break;
+              case 'brownEnemy': itemChar = 'M'; break;
+              case 'boulder': itemChar = 'O'; break;
+              case 'axe': itemChar = 'A'; break;
+              case 'tree': itemChar = 'T'; break;
+              case null:
+              case undefined:
+              case '':
+                itemChar = '.'; break;
+          }
+            rowString += baseChar + itemChar;
+        }
+        exportData.push(rowString);
+      }
+        document.getElementById('exportText').value = exportData.join('\n');
+    }
+    
+    // Save system functions
+    function saveWorld() {
+      const saveName = document.getElementById('saveName').value.trim();
+      if (!saveName) {
+        alert('Please enter a name for your world save!');
+        return;
+      }
+      
+      // Export current world data
+      let exportData = [];
+      for (let row = 0; row < worldHeight; row++) {
+        let rowString = '';
+        for (let col = 0; col < worldWidth; col++) {
+          const cell = world[row][col];
+          // Base: . grass, O plank, D dirt, X brick, B bush, # empty, W water
+          // Item: . none, W sword, L slingshot, S start, E enemy, Z blueEnemy
+          let baseChar = '.';
+          switch(cell.base) {
+            case 'grass': baseChar = '.'; break;
+            case 'plank': baseChar = 'O'; break;
+            case 'dirt': baseChar = 'D'; break;
+            case 'brick': baseChar = 'X'; break;
+            case 'bush': baseChar = 'B'; break;
+            case 'empty': baseChar = '#'; break;
+            case 'water': baseChar = 'W'; break;
+          }
+          let itemChar = '.';
+          switch(cell.item) {
+            case 'sword': itemChar = 'W'; break;
+            case 'slingshot': itemChar = 'L'; break;
+            case 'start': itemChar = 'S'; break;
+            case 'enemy': itemChar = 'E'; break;
+            case 'blueEnemy': itemChar = 'Z'; break;
+            case 'bush': itemChar = 'B'; break;
+            case 'blueHeart': itemChar = 'H'; break;
+            case 'brownEnemy': itemChar = 'M'; break;
+            case 'boulder': itemChar = 'O'; break;
+            case 'axe': itemChar = 'A'; break;
+            case 'tree': itemChar = 'T'; break;
+            case null:
+            case undefined:
+            case '':
+              itemChar = '.'; break;
+          }
+          rowString += baseChar + itemChar;
+        }
+        exportData.push(rowString);
+      }
+      
+      const worldData = exportData.join('\n');
+      const saveData = {
+        name: saveName,
+        data: worldData,
+        width: worldWidth,
+        height: worldHeight,
+        date: new Date().toISOString(),
+        timestamp: Date.now()
+      };
+      
+      // Get existing saves
+      let saves = JSON.parse(localStorage.getItem('supremeEditorSaves') || '[]');
+      
+      // Check if name already exists
+      const existingIndex = saves.findIndex(save => save.name === saveName);
+      if (existingIndex !== -1) {
+        if (confirm(`A save named "${saveName}" already exists. Do you want to overwrite it?`)) {
+          saves[existingIndex] = saveData;
+        } else {
+          return;
+        }
+      } else {
+        saves.push(saveData);
+      }
+      
+      // Save to localStorage
+      localStorage.setItem('supremeEditorSaves', JSON.stringify(saves));
+      
+      // Clear input and refresh list
+      document.getElementById('saveName').value = '';
+      updateSavedWorldsList();
+      
+      alert(`World "${saveName}" saved successfully!`);
+    }
+    
+    function loadSavedWorld(saveName) {
+      const saves = JSON.parse(localStorage.getItem('supremeEditorSaves') || '[]');
+      const save = saves.find(s => s.name === saveName);
+      
+      if (!save) {
+        alert('Save not found!');
+        return;
+      }
+      
+      // Update world dimensions
+      document.getElementById('worldWidth').value = save.width;
+      document.getElementById('worldHeight').value = save.height;
+      
+      // Resize the world
+      worldWidth = save.width;
+      worldHeight = save.height;
+      
+      // Clear existing world data
+      world = [];
+      
+      // Parse the saved data using two-character-per-tile logic (same as importWorld)
+      const lines = save.data.split('\n');
+      for (let row = 0; row < worldHeight; row++) {
+        world[row] = [];
+        for (let col = 0; col < worldWidth; col++) {
+          const baseChar = lines[row][col * 2];
+          const itemChar = lines[row][col * 2 + 1];
+          let base = 'grass';
+          switch(baseChar) {
+            case '.': base = 'grass'; break;
+            case 'O': base = 'plank'; break;
+            case 'D': base = 'dirt'; break;
+            case 'X': base = 'brick'; break;
+            case 'B': base = 'bush'; break;
+            case '#': base = 'empty'; break;
+            case 'W': base = 'water'; break;
+          }
+          let item = null;
+          switch(itemChar) {
+            case 'W': item = 'sword'; break;
+            case 'L': item = 'slingshot'; break;
+            case 'S': item = 'start'; break;
+            case 'E': item = 'enemy'; break;
+            case 'Z': item = 'blueEnemy'; break;
+            case 'B': item = 'bush'; break;
+            case 'H': item = 'blueHeart'; break;
+            case 'M': item = 'brownEnemy'; break;
+            case 'O': item = 'boulder'; break;
+            case 'A': item = 'axe'; break;
+            case 'T': item = 'tree'; break;
+            case '.': item = null; break;
+          }
+          world[row][col] = { base, item };
+        }
+      }
+      
+      updateInfo();
+      drawWorld();
+      alert(`World "${saveName}" loaded successfully!`);
+    }
+    
+    function deleteSavedWorld(saveName) {
+      if (!confirm(`Are you sure you want to delete "${saveName}"?`)) {
+        return;
+      }
+      
+      let saves = JSON.parse(localStorage.getItem('supremeEditorSaves') || '[]');
+      saves = saves.filter(save => save.name !== saveName);
+      localStorage.setItem('supremeEditorSaves', JSON.stringify(saves));
+      
+      updateSavedWorldsList();
+      alert(`World "${saveName}" deleted successfully!`);
+    }
+    
+    function clearSaves() {
+      if (!confirm('Are you sure you want to delete ALL saved worlds? This cannot be undone!')) {
+        return;
+      }
+      
+      localStorage.removeItem('supremeEditorSaves');
+      updateSavedWorldsList();
+      alert('All saved worlds have been deleted!');
+    }
+    
+    function updateSavedWorldsList() {
+      const saves = JSON.parse(localStorage.getItem('supremeEditorSaves') || '[]');
+      const container = document.getElementById('savedWorldsList');
+      
+      if (saves.length === 0) {
+        container.innerHTML = '<p style="color: #bdc3c7; font-style: italic;">No saved worlds yet.</p>';
+        return;
+      }
+      
+      // Sort saves by date (newest first)
+      saves.sort((a, b) => b.timestamp - a.timestamp);
+      
+      container.innerHTML = saves.map(save => {
+        const date = new Date(save.date).toLocaleDateString() + ' ' + new Date(save.date).toLocaleTimeString();
+        return `
+          <div class="saved-world-item">
+            <div>
+              <div class="saved-world-name">${save.name}</div>
+              <div class="saved-world-date">${date} (${save.width}x${save.height})</div>
+            </div>
+            <div class="saved-world-actions">
+              <button class="load-btn" onclick="loadSavedWorld('${save.name}')">Load</button>
+              <button class="delete-btn" onclick="deleteSavedWorld('${save.name}')">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    // Initialize everything
+    function init() {
+      initWorld();
+      initBlockPalette();
+      handleKeyboard();
+      handleMouse();
+      drawWorld();
+      updateSavedWorldsList(); // Load saved worlds list
+    }
+    
+    // Start the editor
+    init();
+  </script>
+</body>
+</html> 

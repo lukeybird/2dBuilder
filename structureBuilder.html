@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Structure Builder</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    
+    .controls {
+      margin-bottom: 20px;
+    }
+    
+    .color-info {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    
+    .color-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 4px;
+      background: white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .color-item:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    .color-item.selected {
+      background: #e3f2fd;
+      border: 2px solid #2196F3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    
+    .color-preview {
+      width: 20px;
+      height: 20px;
+      border: 1px solid #ccc;
+      border-radius: 2px;
+    }
+    
+    .grid-container {
+      display: inline-block;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
+    }
+    
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(32, 20px);
+      grid-template-rows: repeat(32, 20px);
+      gap: 1px;
+      background: #ccc;
+      border: 2px solid #333;
+    }
+    
+    .cell {
+      width: 20px;
+      height: 20px;
+      background: white;
+      border: none;
+      cursor: pointer;
+      transition: background-color 0.1s;
+    }
+    
+    .cell:hover {
+      opacity: 0.8;
+    }
+    
+    .cell.white {
+      background: white;
+    }
+    
+    .cell.brown {
+      background: #8B4513;
+    }
+    
+    .cell.yellow {
+      background: #FFD700;
+    }
+    
+    .export-section {
+      margin-top: 20px;
+    }
+    
+    .export-button {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-bottom: 10px;
+    }
+    
+    .export-button:hover {
+      background: #45a049;
+    }
+    
+    .clear-button {
+      background: #f44336;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 10px;
+    }
+    
+    .clear-button:hover {
+      background: #da190b;
+    }
+    
+    .output {
+      margin-top: 20px;
+      text-align: left;
+    }
+    
+    .output textarea {
+      width: 100%;
+      height: 200px;
+      font-family: monospace;
+      font-size: 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 10px;
+      resize: vertical;
+    }
+    
+    .instructions {
+      background: #e7f3ff;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Structure Builder</h1>
+    
+    <div class="instructions">
+      <h3>Instructions:</h3>
+      <ul>
+        <li>Click a color to select it (it will be highlighted in blue)</li>
+        <li>Click on any cell to apply the selected color</li>
+        <li>White (#) = Empty space</li>
+        <li>Brown (X) = Brick wall</li>
+        <li>Yellow (O) = Wooden plank</li>
+        <li>Click "Export Structure" to get the text representation</li>
+        <li>Click "Clear Grid" to reset everything to white</li>
+      </ul>
+    </div>
+    
+    <div class="color-info">
+      <div class="color-item selected" data-color="white">
+        <div class="color-preview" style="background: white;"></div>
+        <span>White (#) - Empty</span>
+      </div>
+      <div class="color-item" data-color="brown">
+        <div class="color-preview" style="background: #8B4513;"></div>
+        <span>Brown (X) - Brick</span>
+      </div>
+      <div class="color-item" data-color="yellow">
+        <div class="color-preview" style="background: #FFD700;"></div>
+        <span>Yellow (O) - Plank</span>
+      </div>
+    </div>
+    
+    <div class="grid-container">
+      <div class="grid" id="grid"></div>
+    </div>
+    
+    <div class="export-section">
+      <button class="export-button" onclick="exportStructure()">Export Structure</button>
+      <button class="clear-button" onclick="clearGrid()">Clear Grid</button>
+    </div>
+    
+    <div class="output">
+      <h3>Structure Output:</h3>
+      <textarea id="output" readonly placeholder="Click 'Export Structure' to generate the text representation..."></textarea>
+    </div>
+  </div>
+
+  <script>
+    const grid = document.getElementById('grid');
+    const output = document.getElementById('output');
+    let selectedColor = 'white';
+    
+    // Add click handlers for color selection
+    document.querySelectorAll('.color-item').forEach(item => {
+      item.addEventListener('click', function() {
+        // Remove selected class from all color items
+        document.querySelectorAll('.color-item').forEach(i => i.classList.remove('selected'));
+        // Add selected class to clicked item
+        this.classList.add('selected');
+        // Update selected color
+        selectedColor = this.dataset.color;
+      });
+    });
+    
+    // Create 32x32 grid
+    for (let row = 0; row < 32; row++) {
+      for (let col = 0; col < 32; col++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell white';
+        cell.dataset.row = row;
+        cell.dataset.col = col;
+        
+        cell.addEventListener('click', function() {
+          applyColor(this);
+        });
+        
+        grid.appendChild(cell);
+      }
+    }
+    
+    function applyColor(cell) {
+      cell.className = `cell ${selectedColor}`;
+    }
+    
+    function exportStructure() {
+      const cells = document.querySelectorAll('.cell');
+      let structure = [];
+      
+      for (let row = 0; row < 32; row++) {
+        let rowString = '';
+        for (let col = 0; col < 32; col++) {
+          const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+          const className = cell.className;
+          
+          if (className.includes('brown')) {
+            rowString += 'X';
+          } else if (className.includes('yellow')) {
+            rowString += 'O';
+          } else {
+            rowString += '#';
+          }
+        }
+        structure.push(rowString);
+      }
+      
+      const structureText = structure.join('\n');
+      output.value = structureText;
+      
+      // Auto-select the text for easy copying
+      output.select();
+      output.setSelectionRange(0, 99999); // For mobile devices
+    }
+    
+    function clearGrid() {
+      const cells = document.querySelectorAll('.cell');
+      cells.forEach(cell => {
+        cell.className = 'cell white';
+      });
+      output.value = '';
+    }
+  </script>
+</body>
+</html> 

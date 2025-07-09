@@ -1,0 +1,2745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shooter Game - Grid Map</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #222;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      width: 100vw;
+    }
+    canvas {
+      background: #222;
+      box-shadow: 0 0 20px #000;
+      display: block;
+      margin: 0;
+    }
+  </style>
+</head>
+  <body>
+    <div id="importSection" style="position: absolute; top: 20px; left: 20px; z-index: 1000; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; color: white;">
+      <h3>Import World Data</h3>
+      <p>Paste your world data from the Supreme Editor:</p>
+      <p style="font-size: 12px; color: #ccc;">New: Use 'W' for sword pickups in the editor. Press SPACEBAR to swing sword and cut bushes!</p>
+      <textarea id="worldData" rows="10" cols="50" placeholder="Paste your world data here..."></textarea>
+      <br><br>
+      <button onclick="importWorld()" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Generate World</button>
+      <button onclick="loadDefaultWorld()" style="background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-left: 10px;">Load Default World</button>
+    </div>
+    
+    <button id="fullscreenBtn" style="position: absolute; top: 20px; right: 20px; z-index: 1001; background: #222; color: #fff; border: 2px solid #fff; border-radius: 8px; padding: 10px 20px; font-size: 16px; cursor: pointer;">Fullscreen</button>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- Inventory Overlay -->
+    <div id="inventoryOverlay" style="display:none; position: fixed; left: 0; top: 0; width: 100vw; height: 100vh; background: rgba(30,30,30,0.85); z-index: 2000; align-items: center; justify-content: center;">
+      <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #222; border: 4px solid #888; border-radius: 16px; padding: 32px 40px; box-shadow: 0 0 40px #000; min-width: 420px; display: flex; flex-direction: row; align-items: flex-start; gap: 32px;">
+        <div style="flex: 1;">
+          <h2 style="color: #fff; text-align: center; margin-bottom: 18px;">Inventory</h2>
+          <div id="inventoryGrid" style="display: grid; grid-template-columns: repeat(3, 60px); grid-gap: 12px; margin-bottom: 24px;">
+            <!-- 9 inventory slots will be filled by JS -->
+          </div>
+          <div style="text-align: center; margin-top: 18px;">
+            <span style="color: #aaa; font-size: 14px;">Press E or Esc to close</span>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+          <div style="font-size: 16px; color: #fff; margin-bottom: 6px;">Crafting</div>
+          <div style="display: grid; grid-template-columns: repeat(2, 48px); grid-template-rows: repeat(2, 48px); gap: 8px;">
+            <div id="craftingSlot0" class="crafting-slot" style="width: 48px; height: 48px; background: #333; border: 2px solid #666; border-radius: 8px;"></div>
+            <div id="craftingSlot1" class="crafting-slot" style="width: 48px; height: 48px; background: #333; border: 2px solid #666; border-radius: 8px;"></div>
+            <div id="craftingSlot2" class="crafting-slot" style="width: 48px; height: 48px; background: #333; border: 2px solid #666; border-radius: 8px;"></div>
+            <div id="craftingSlot3" class="crafting-slot" style="width: 48px; height: 48px; background: #333; border: 2px solid #666; border-radius: 8px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Map/grid settings
+    let TILE_SIZE = 64;
+    let MAP_COLS = 50;
+    let MAP_ROWS = 50;
+    let worldData = [];
+    let startPosition = { x: 25, y: 25 }; // Default start position
+    
+    // Default world structure (simple house)
+    const DEFAULT_WORLD = [
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      "..................................................",
+      ".................................................."
+    ];
+
+    // Player settings
+    let player = {
+      x: 25 * TILE_SIZE,
+      y: 25 * TILE_SIZE,
+      radius: 24,
+      speed: 4,
+      angle: 0, // facing direction in radians
+      rotationSpeed: 0.1, // radians per frame
+      hasSword: false, // sword pickup status
+      hasSlingshot: false, // slingshot pickup status
+      hasAxe: false, // axe pickup status
+      currentWeapon: 'sword', // 'sword', 'slingshot', or 'axe'
+      swordAnimation: 0, // sword swing animation (0 = not swinging)
+      swordCooldown: 0, // cooldown between sword swings
+      slingshotCooldown: 0, // cooldown between slingshot shots
+      axeAnimation: 0, // axe swing animation (0 = not swinging)
+      axeCooldown: 0, // cooldown between axe swings
+      health: 3, // player health (3 hearts)
+      maxHealth: 3, // player max health
+      invulnerabilityTime: 0, // invulnerability after being hit
+      // Inventory: 9 slots (0-5: resources, 6-8: usable), 4 crafting slots
+      inventory: [
+        { type: 'rock', count: 0 },    // 0
+        { type: 'wood', count: 0 },    // 1
+        { type: null, count: 0 },      // 2
+        { type: null, count: 0 },      // 3
+        { type: null, count: 0 },      // 4
+        { type: null, count: 0 },      // 5
+        { type: 'sword', count: 0 },   // 6
+        { type: 'slingshot', count: 0 },// 7
+        { type: 'axe', count: 0 }      // 8
+      ],
+      crafting: [
+        { type: null, count: 0 },
+        { type: null, count: 0 },
+        { type: null, count: 0 },
+        { type: null, count: 0 }
+      ]
+    };
+    let inventoryOpen = false;
+
+    // Enemy settings
+    let enemies = [];
+
+    // Camera settings
+    const camera = {
+      x: 0,
+      y: 0,
+      width: canvas.width,
+      height: canvas.height
+    };
+
+    // Load tiles
+    const grassImg = new Image();
+    grassImg.src = 'grass.png';
+    const brickImg = new Image();
+    brickImg.src = 'block.jpg';
+    const plankImg = new Image();
+    plankImg.src = 'plank.png';
+    const dirtImg = new Image();
+    dirtImg.src = 'dirt.png';
+    const bushImg = new Image();
+    bushImg.src = 'bush.png';
+    const startBlockImg = new Image();
+    startBlockImg.src = 'startingBlock.png';
+    const swordImg = new Image();
+    swordImg.src = 'sword.png';
+    const enemyImg = new Image();
+    enemyImg.src = 'enemy.png';
+    const roofImg = new Image();
+    roofImg.src = 'tile.png';
+    const slingShotImg = new Image();
+    slingShotImg.src = 'slingShot.png';
+    const rockImg = new Image();
+    rockImg.src = 'rock.png';
+    const boulderImg = new Image();
+    boulderImg.src = 'boulder.png';
+    const axeImg = new Image();
+    axeImg.src = 'axe.png';
+    // Add blueHeartImg loading
+    const blueHeartImg = new Image();
+    blueHeartImg.src = 'blueHeart.png';
+    // Add treeImg loading
+    const treeImg = new Image();
+    treeImg.src = 'tree.png';
+    const woodImg = new Image();
+    woodImg.src = 'wood.png';
+    const waterImg = new Image();
+    waterImg.src = 'water.png';
+
+    // Keyboard input
+    const keys = {};
+    window.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      // Weapon switch
+      if (e.key === 'b' || e.key === 'B') {
+        if (player.hasSword && player.hasSlingshot && player.hasAxe) {
+          // Cycle through all three weapons
+          if (player.currentWeapon === 'sword') player.currentWeapon = 'slingshot';
+          else if (player.currentWeapon === 'slingshot') player.currentWeapon = 'axe';
+          else player.currentWeapon = 'sword';
+        } else if (player.hasSword && player.hasSlingshot) {
+          player.currentWeapon = player.currentWeapon === 'sword' ? 'slingshot' : 'sword';
+        } else if (player.hasSword && player.hasAxe) {
+          player.currentWeapon = player.currentWeapon === 'sword' ? 'axe' : 'sword';
+        } else if (player.hasSlingshot && player.hasAxe) {
+          player.currentWeapon = player.currentWeapon === 'slingshot' ? 'axe' : 'slingshot';
+        } else if (player.hasSlingshot) {
+          player.currentWeapon = 'slingshot';
+        } else if (player.hasSword) {
+          player.currentWeapon = 'sword';
+        } else if (player.hasAxe) {
+          player.currentWeapon = 'axe';
+        }
+      }
+      // Inventory open/close
+      if ((e.key === 'e' || e.key === 'E') && !inventoryOpen) {
+        inventoryOpen = true;
+        document.getElementById('inventoryOverlay').style.display = 'flex';
+        renderInventoryUI();
+      } else if ((e.key === 'e' || e.key === 'E' || e.key === 'Escape') && inventoryOpen) {
+        inventoryOpen = false;
+        document.getElementById('inventoryOverlay').style.display = 'none';
+      }
+    });
+    window.addEventListener('keyup', e => keys[e.key] = false);
+
+    let hearts = [];
+    let houses = [];
+    let projectiles = [];
+    let rocks = [];
+    let damageAnimations = []; // Array to track damage animations
+    let gameOver = false;
+    
+    // Tree health tracking
+    let treeHealth = new Map(); // Maps "row,col" to health value
+    let treeCooldown = new Map(); // Maps "row,col" to cooldown frames
+    let woods = [];
+
+    function getTileType(x, y) {
+      const col = Math.floor(x / TILE_SIZE);
+      const row = Math.floor(y / TILE_SIZE);
+      
+      // Check bounds
+      if (row < 0 || row >= worldData.length || col < 0 || col >= worldData[0].length) {
+        return '.'; // grass for out of bounds
+      }
+      
+      // Return the item if present, else the base
+      const cell = worldData[row][col];
+      return cell.item ? cell.item : cell.base;
+    }
+    
+    function checkCollision(x, y) {
+      const col = Math.floor(x / TILE_SIZE);
+      const row = Math.floor(y / TILE_SIZE);
+      
+      // Check bounds
+      if (row < 0 || row >= worldData.length || col < 0 || col >= worldData[0].length) {
+        return true; // collision for out of bounds
+      }
+      
+      const cell = worldData[row][col];
+      // X (brick walls), W (water), B (bushes as item), O (boulders as item), and T (trees as item) cause collision, everything else is walkable
+      return cell.base === 'X' || cell.base === 'W' || cell.item === 'B' || cell.item === 'O' || cell.item === 'T';
+    }
+
+    function isCircleOverlap(x1, y1, r1, x2, y2, r2) {
+      const dx = x1 - x2;
+      const dy = y1 - y2;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return dist < r1 + r2;
+    }
+
+    // Tree health management functions
+    function getTreeHealth(row, col) {
+      const key = `${row},${col}`;
+      return treeHealth.get(key) || 3; // Default to 3 health
+    }
+
+    function setTreeHealth(row, col, health) {
+      const key = `${row},${col}`;
+      if (health <= 0) {
+        treeHealth.delete(key);
+        // Remove tree from all 4 tiles
+        if (row > 0 && col > 0) {
+          // Check if this is part of a 2x2 tree
+          const leftCell = worldData[row][col - 1];
+          const topCell = worldData[row - 1][col];
+          const topLeftCell = worldData[row - 1][col - 1];
+          
+          if (leftCell.item === 'T' && topCell.item === 'T' && topLeftCell.item === 'T') {
+            // This is a 2x2 tree, remove all parts
+            worldData[row][col].item = null;
+            worldData[row][col - 1].item = null;
+            worldData[row - 1][col].item = null;
+            worldData[row - 1][col - 1].item = null;
+            
+            // Clear health for all parts
+            treeHealth.delete(`${row},${col}`);
+            treeHealth.delete(`${row},${col-1}`);
+            treeHealth.delete(`${row-1},${col}`);
+            treeHealth.delete(`${row-1},${col-1}`);
+            // Spawn 3 wood items in 3 directions
+            spawnWood((col-1+col)/2 * TILE_SIZE + TILE_SIZE, (row-1+row)/2 * TILE_SIZE + TILE_SIZE);
+          }
+        } else if (row === 0 && col === 0) {
+          // Special case for top-left corner of map
+          worldData[row][col].item = null;
+          if (worldData[row][col + 1] && worldData[row][col + 1].item === 'T') {
+            worldData[row][col + 1].item = null;
+            treeHealth.delete(`${row},${col+1}`);
+          }
+          if (worldData[row + 1] && worldData[row + 1][col] && worldData[row + 1][col].item === 'T') {
+            worldData[row + 1][col].item = null;
+            treeHealth.delete(`${row+1},${col}`);
+          }
+          if (worldData[row + 1] && worldData[row + 1][col + 1] && worldData[row + 1][col + 1].item === 'T') {
+            worldData[row + 1][col + 1].item = null;
+            treeHealth.delete(`${row+1},${col+1}`);
+          }
+          // Spawn 3 wood items in 3 directions
+          spawnWood(col * TILE_SIZE + TILE_SIZE / 2, row * TILE_SIZE + TILE_SIZE / 2);
+        }
+      } else {
+        treeHealth.set(key, health);
+      }
+    }
+
+    function damageTree(row, col, damage = 1) {
+      const key = `${row},${col}`;
+      // If on cooldown, do nothing
+      if (treeCooldown.get(key) > 0) return;
+      const currentHealth = getTreeHealth(row, col);
+      setTreeHealth(row, col, currentHealth - damage);
+      // Set cooldown to 60 frames (1 second)
+      treeCooldown.set(key, 60);
+    }
+
+    function update() {
+      if (gameOver) return;
+      // Update tree cooldowns
+      for (const [key, cooldown] of treeCooldown.entries()) {
+        if (cooldown > 0) {
+          treeCooldown.set(key, cooldown - 1);
+        } else {
+          treeCooldown.delete(key);
+        }
+      }
+      // Adjust player speed if at 0 hearts
+      if (player.health === 0) {
+        player.speed = 2; // 50% of normal (assuming normal is 4)
+      } else {
+        player.speed = 4;
+      }
+      // Rotate player
+      if (keys['ArrowLeft']) player.angle -= player.rotationSpeed;
+      if (keys['ArrowRight']) player.angle += player.rotationSpeed;
+      
+      // Calculate new position
+      let newX = player.x;
+      let newY = player.y;
+      
+      // Move player forward/backward
+      if (keys['ArrowUp']) {
+        newX += Math.cos(player.angle) * player.speed;
+        newY += Math.sin(player.angle) * player.speed;
+      }
+      if (keys['ArrowDown']) {
+        newX -= Math.cos(player.angle) * player.speed;
+        newY -= Math.sin(player.angle) * player.speed;
+      }
+
+      // Check collision with walls only (not enemies)
+      let blocked = false;
+      if (!checkCollision(newX, newY)) {
+        // Check collision with enemies and try to push them if overlapping
+        let canMove = true;
+        const pushPairs = [];
+        for (const enemy of enemies) {
+          if (isCircleOverlap(newX, newY, player.radius, enemy.x, enemy.y, enemy.radius)) {
+            // Calculate push direction
+            const dx = enemy.x - newX;
+            const dy = enemy.y - newY;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            const overlap = player.radius + enemy.radius - dist;
+            if (overlap > 0) {
+              // Push enemy away from player
+              const pushX = enemy.x + (dx / dist) * overlap;
+              const pushY = enemy.y + (dy / dist) * overlap;
+              // Only push if not into wall or another enemy
+              if (!checkCollision(pushX, pushY)) {
+                let enemyBlocked = false;
+                for (const other of enemies) {
+                  if (other !== enemy && isCircleOverlap(pushX, pushY, enemy.radius, other.x, other.y, other.radius)) {
+                    enemyBlocked = true;
+                    break;
+                  }
+                }
+                if (!enemyBlocked) {
+                  pushPairs.push({ enemy, pushX, pushY });
+                } else {
+                  canMove = false;
+                  break;
+                }
+              } else {
+                canMove = false;
+                break;
+              }
+            }
+          }
+        }
+        if (canMove) {
+          // Apply all pushes
+          for (const { enemy, pushX, pushY } of pushPairs) {
+            enemy.x = pushX;
+            enemy.y = pushY;
+          }
+        player.x = newX;
+        player.y = newY;
+        }
+        // If can't move, player stays in place
+      }
+
+      // Clamp player to map bounds
+      player.x = Math.max(player.radius, Math.min(player.x, MAP_COLS * TILE_SIZE - player.radius));
+      player.y = Math.max(player.radius, Math.min(player.y, MAP_ROWS * TILE_SIZE - player.radius));
+
+      // Check for sword pickup
+      checkSwordPickup();
+      
+      // Handle weapon actions
+      if (player.currentWeapon === 'sword') {
+      if (keys[' '] && player.hasSword && player.swordCooldown <= 0) {
+        player.swordAnimation = 1.0; // Start sword swing
+        player.swordCooldown = 30; // 30 frames cooldown
+        checkSwordHit();
+        checkPlayerSwordHit(); // Check if player sword hits enemies
+      }
+      if (player.swordAnimation > 0) {
+        player.swordAnimation -= 0.1;
+        if (player.swordAnimation < 0) player.swordAnimation = 0;
+      }
+      if (player.swordCooldown > 0) {
+        player.swordCooldown--;
+        }
+      } else if (player.currentWeapon === 'slingshot') {
+        if (keys[' '] && player.hasSlingshot && player.slingshotCooldown <= 0) {
+          if ((player.inventory[0].count || 0) > 0) {
+            fireSlingshot();
+            player.slingshotCooldown = 20; // 20 frames cooldown
+            player.inventory[0].count--;
+          }
+        }
+        if (player.slingshotCooldown > 0) {
+          player.slingshotCooldown--;
+        }
+      } else if (player.currentWeapon === 'axe') {
+        if (keys[' '] && player.hasAxe && player.axeCooldown <= 0) {
+          player.axeAnimation = 1.0; // Start axe swing
+          player.axeCooldown = 30; // 30 frames cooldown
+          checkAxeHit();
+          checkPlayerAxeHit(); // Check if player axe hits enemies
+        }
+        if (player.axeAnimation > 0) {
+          player.axeAnimation -= 0.1;
+          if (player.axeAnimation < 0) player.axeAnimation = 0;
+        }
+        if (player.axeCooldown > 0) {
+          player.axeCooldown--;
+        }
+      }
+      
+      // Update player invulnerability
+      if (player.invulnerabilityTime > 0) {
+        player.invulnerabilityTime--;
+      }
+      
+      // Update hearts animation and check for pickup
+      for (let heart of hearts) {
+        if (!heart.collected) {
+          // Animate pop out: up, then fall, then bounce
+          heart.t += 1;
+          if (heart.t < 12) {
+            heart.y = heart.baseY + heart.vy * heart.t + 0.3 * heart.t * heart.t;
+          } else {
+            // Settle on ground
+            heart.y = heart.baseY + 24 * Math.exp(-0.1 * (heart.t - 12)) * Math.cos(0.3 * (heart.t - 12));
+          }
+          // Check for player pickup
+          const dx = player.x - heart.x;
+          const dy = player.y - heart.y;
+          if (Math.sqrt(dx * dx + dy * dy) < player.radius + 16 && player.health < player.maxHealth) {
+            player.health = Math.min(player.maxHealth, player.health + 1);
+            heart.collected = true;
+          }
+        }
+      }
+      // Remove collected hearts
+      hearts = hearts.filter(h => !h.collected);
+      
+      // Update rocks animation and check for pickup
+      for (let rock of rocks) {
+        if (!rock.collected) {
+          // Animate pop out: up, then fall, then bounce
+          rock.t += 1;
+          if (rock.t < 12) {
+            rock.y = rock.baseY + rock.vy * rock.t + 0.3 * rock.t * rock.t;
+          } else {
+            // Settle on ground
+            rock.y = rock.baseY + 24 * Math.exp(-0.1 * (rock.t - 12)) * Math.cos(0.3 * (rock.t - 12));
+          }
+          // Check for player pickup
+          const dx = player.x - rock.x;
+          const dy = player.y - rock.y;
+          if (Math.sqrt(dx * dx + dy * dy) < player.radius + 16) {
+            player.inventory[0].count = (player.inventory[0].count || 0) + 1; // rocks
+            rock.collected = true;
+          }
+        }
+      }
+      // Remove collected rocks
+      rocks = rocks.filter(r => !r.collected);
+      
+      // Update enemies
+      updateEnemies();
+
+      // Camera follows player, keep player centered
+      camera.x = player.x - camera.width / 2;
+      camera.y = player.y - camera.height / 2;
+      // Clamp camera to map bounds
+      camera.x = Math.max(0, Math.min(camera.x, MAP_COLS * TILE_SIZE - camera.width));
+      camera.y = Math.max(0, Math.min(camera.y, MAP_ROWS * TILE_SIZE - camera.height));
+
+      // Update projectiles
+      updateProjectiles();
+
+      // Update damage animations
+      updateDamageAnimations();
+
+      // Update woods animation and check for pickup
+      for (let wood of woods) {
+        if (!wood.collected) {
+          // Animate pop out: up, then fall, then bounce
+          wood.t += 1;
+          if (wood.t < 12) {
+            // Check collision before moving
+            const newX = wood.x + wood.vx;
+            const newY = wood.y + wood.vy + 0.3 * wood.t;
+            if (!checkCollision(newX, newY)) {
+              wood.x = newX;
+              wood.y = newY;
+            } else {
+              // Stop movement when hitting barrier
+              wood.vx = 0;
+              wood.vy = 0;
+            }
+          } else {
+            // Settle on ground
+            wood.vx *= 0.9;
+            wood.vy *= 0.9;
+            const newX = wood.x + wood.vx;
+            const newY = wood.y + wood.vy;
+            if (!checkCollision(newX, newY)) {
+              wood.x = newX;
+              wood.y = newY;
+            } else {
+              // Stop movement when hitting barrier
+              wood.vx = 0;
+              wood.vy = 0;
+            }
+          }
+          // Check for player pickup
+          const dx = player.x - wood.x;
+          const dy = player.y - wood.y;
+          if (Math.sqrt(dx * dx + dy * dy) < player.radius + 16) {
+            player.inventory[1].count = (player.inventory[1].count || 0) + 1; // wood
+            wood.collected = true;
+          }
+        }
+      }
+      // Remove collected woods
+      woods = woods.filter(w => !w.collected);
+
+      // At the end of update, check for game over
+      if (player.health < 0 && !gameOver) {
+        gameOver = true;
+        showGameOver();
+      }
+    }
+
+    function showGameOver() {
+      // Create overlay if not already present
+      if (!document.getElementById('gameOverOverlay')) {
+        const overlay = document.createElement('div');
+        overlay.id = 'gameOverOverlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+        overlay.style.background = 'rgba(0,0,0,0.85)';
+        overlay.style.display = 'flex';
+        overlay.style.flexDirection = 'column';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = '2000';
+        overlay.innerHTML = `
+          <h1 style="color: #fff; font-size: 64px; margin-bottom: 30px;">Game Over</h1>
+          <button id="restartBtn" style="font-size: 24px; padding: 16px 40px; border-radius: 10px; border: none; background: #e74c3c; color: #fff; cursor: pointer;">Restart</button>
+        `;
+        document.body.appendChild(overlay);
+        document.getElementById('restartBtn').onclick = () => {
+          window.location.reload();
+        };
+      }
+    }
+
+    function checkSwordPickup() {
+      const playerCol = Math.floor(player.x / TILE_SIZE);
+      const playerRow = Math.floor(player.y / TILE_SIZE);
+      
+      // Check if player is on a sword tile
+      if (playerRow >= 0 && playerRow < worldData.length && 
+          playerCol >= 0 && playerCol < worldData[0].length) {
+        const cell = worldData[playerRow][playerCol];
+        if (cell.item === 'W' && !player.hasSword) {
+          player.hasSword = true;
+          player.inventory[6].count = 1;
+          cell.item = null;
+        }
+        // Check if player is on a slingshot tile
+        if (cell.item === 'L' && !player.hasSlingshot) {
+          player.hasSlingshot = true;
+          player.inventory[7].count = 1;
+          cell.item = null;
+          if (!player.hasSword && !player.hasAxe) {
+            player.currentWeapon = 'slingshot';
+          }
+        }
+        // Check if player is on an axe tile
+        if (cell.item === 'A' && !player.hasAxe) {
+          player.hasAxe = true;
+          player.inventory[8].count = 1;
+          cell.item = null;
+          if (!player.hasSword && !player.hasSlingshot) {
+            player.currentWeapon = 'axe';
+          }
+        }
+        // In checkSwordPickup, fix blue heart pickup logic
+        if (cell.item === 'H') {
+          player.maxHealth = Math.min(player.maxHealth + 1, 10); // cap at 10
+          player.health = player.maxHealth;
+          cell.item = null;
+        }
+      }
+    }
+    
+    function checkSwordHit() {
+      if (!player.hasSword) return;
+      // Sword hit arc now starts slightly behind the player
+      const swordLength = 30; // Length of the sword blade
+      const swordRangeStart = player.radius - 10; // Start 10px behind player center
+      const swordRangeEnd = player.radius + 20 + swordLength; // End at sword tip
+      const arcAngle = Math.PI * 1.1; // Slightly wider arc
+      const angleStep = Math.PI / 12; // Check 12 different angles for better precision
+      const startAngle = player.angle - arcAngle / 2;
+      for (let i = 0; i <= 12; i++) {
+        const currentAngle = startAngle + (angleStep * i);
+        for (let r = swordRangeStart; r <= swordRangeEnd; r += 8) {
+          const hitX = player.x + Math.cos(currentAngle) * r;
+          const hitY = player.y + Math.sin(currentAngle) * r;
+        const hitCol = Math.floor(hitX / TILE_SIZE);
+        const hitRow = Math.floor(hitY / TILE_SIZE);
+          if (hitRow >= 0 && hitRow < worldData.length && hitCol >= 0 && hitCol < worldData[0].length) {
+            if (worldData[hitRow][hitCol].item === 'B') {
+              worldData[hitRow][hitCol].item = null;
+              // 10% chance to drop a heart
+              if (Math.random() < 0.1) {
+              hearts.push({
+                x: hitCol * TILE_SIZE + TILE_SIZE / 2,
+                y: hitRow * TILE_SIZE + TILE_SIZE / 2,
+                baseX: hitCol * TILE_SIZE + TILE_SIZE / 2,
+                baseY: hitRow * TILE_SIZE + TILE_SIZE / 2,
+                  vy: -6 - Math.random() * 2,
+                  t: 0,
+                collected: false
+              });
+            }
+              // 40% chance to drop a rock
+              if (Math.random() < 0.4) {
+                rocks.push({
+                  x: hitCol * TILE_SIZE + TILE_SIZE / 2,
+                  y: hitRow * TILE_SIZE + TILE_SIZE / 2,
+                  baseX: hitCol * TILE_SIZE + TILE_SIZE / 2,
+                  baseY: hitRow * TILE_SIZE + TILE_SIZE / 2,
+                  vy: -5 - Math.random() * 2,
+                  t: 0,
+                  collected: false
+                });
+        }
+      }
+            // Sword does 0 damage to trees
+            // else if (worldData[hitRow][hitCol].item === 'T') {
+            //   damageTree(hitRow, hitCol, 0);
+            // }
+          }
+        }
+      }
+    }
+
+    function checkAxeHit() {
+      if (!player.hasAxe) return;
+      // Rectangle hitbox parameters
+      const rectLength = TILE_SIZE * 0.8; // Shorter reach - about 0.8 tiles long
+      const rectWidth = TILE_SIZE * 0.5;
+      const forwardDist = player.radius + 2;
+      // Calculate rectangle center in front of player
+      const centerX = player.x + Math.cos(player.angle) * (forwardDist + rectLength / 2);
+      const centerY = player.y + Math.sin(player.angle) * (forwardDist + rectLength / 2);
+      // Rectangle corners (for reference box)
+      const dx = Math.cos(player.angle);
+      const dy = Math.sin(player.angle);
+      const perpX = -dy;
+      const perpY = dx;
+      // Rectangle vertices
+      const halfL = rectLength / 2;
+      const halfW = rectWidth / 2;
+      const corners = [
+        { x: centerX + perpX * halfW + dx * halfL, y: centerY + perpY * halfW + dy * halfL },
+        { x: centerX - perpX * halfW + dx * halfL, y: centerY - perpY * halfW + dy * halfL },
+        { x: centerX - perpX * halfW - dx * halfL, y: centerY - perpY * halfW - dy * halfL },
+        { x: centerX + perpX * halfW - dx * halfL, y: centerY + perpY * halfW - dy * halfL }
+      ];
+      // Red reference box removed - no longer showing hitbox
+      // Place plank on water if player has enough wood
+      let plankPlaced = false;
+      // Check all tiles in the rectangle
+      for (let row = 0; row < worldData.length; row++) {
+        for (let col = 0; col < worldData[0].length; col++) {
+          // Tile center
+          const tx = col * TILE_SIZE + TILE_SIZE / 2;
+          const ty = row * TILE_SIZE + TILE_SIZE / 2;
+          // Point-in-rotated-rect test
+          const relX = tx - centerX;
+          const relY = ty - centerY;
+          const localX = relX * dx + relY * dy;
+          const localY = relX * perpX + relY * perpY;
+          if (Math.abs(localX) <= rectLength / 2 && Math.abs(localY) <= rectWidth / 2) {
+            // Place plank on water if player has enough wood
+            if (!plankPlaced && worldData[row][col].base === 'W' && player.inventory[1].count >= 4) {
+              worldData[row][col].base = 'O'; // Plank
+              player.inventory[1].count -= 4;
+              plankPlaced = true;
+            }
+            if (worldData[row][col].item === 'T') {
+              damageTree(row, col, 1);
+              // Also damage the tile above and to the left if they exist and are part of the same tree
+              if (row > 0 && worldData[row-1][col].item === 'T') {
+                damageTree(row-1, col, 1);
+              }
+              if (col > 0 && worldData[row][col-1].item === 'T') {
+                damageTree(row, col-1, 1);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function createAxeRectDamageAnimation(corners) {
+      damageAnimations.push({
+        type: 'axeRect',
+        corners: corners,
+        timer: 15,
+        maxTimer: 15
+      });
+    }
+
+    function drawPlayer(x, y) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(player.angle - Math.PI / 2);
+      
+      // Draw main body (circle)
+      ctx.beginPath();
+      ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+      ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff'; // Gray when dead
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      
+      // Draw wrinkles when dead
+      if (player.health <= 0) {
+        ctx.strokeStyle = '#7f8c8d';
+        ctx.lineWidth = 2;
+        
+        // Horizontal wrinkles on forehead
+        ctx.beginPath();
+        ctx.moveTo(-8, -8);
+        ctx.lineTo(8, -8);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(-6, -6);
+        ctx.lineTo(6, -6);
+        ctx.stroke();
+        
+        // Vertical wrinkle between eyes
+        ctx.beginPath();
+        ctx.moveTo(0, -4);
+        ctx.lineTo(0, 2);
+        ctx.stroke();
+        
+        // Sad mouth wrinkle
+        ctx.beginPath();
+        ctx.moveTo(-4, 12);
+        ctx.lineTo(4, 12);
+        ctx.stroke();
+      }
+
+      // Draw cute little blood splatter on face when injured (2 hearts or below)
+      if (player.health <= 2) {
+        ctx.fillStyle = '#e74c3c';
+        ctx.globalAlpha = 0.8;
+        
+        // Draw a small blood splatter on the left side of the face
+        ctx.beginPath();
+        ctx.arc(-12, 4, 4, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add a tiny drop
+        ctx.beginPath();
+        ctx.arc(-8, 8, 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.globalAlpha = 1.0;
+      }
+      
+      // Draw purple bruise when critically injured (1 heart or below)
+      if (player.health <= 1) {
+        ctx.fillStyle = '#9b59b6';
+        ctx.globalAlpha = 0.7;
+        
+        // Draw a purple bruise on the right side of the body (away from face)
+        ctx.beginPath();
+        ctx.arc(16, 0, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Add a smaller bruise mark
+        ctx.beginPath();
+        ctx.arc(18, -4, 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.globalAlpha = 1.0;
+      }
+
+      // Draw hands
+      if (player.currentWeapon === 'slingshot' && player.hasSlingshot) {
+        // Draw both hands close to the slingshot, just before the slingshot image
+        // Left hand (slightly above center)
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // align with slingshot direction
+        ctx.beginPath();
+        ctx.arc(player.radius + 10, -6, 7, 0, Math.PI * 2); // just before slingshot, above
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        ctx.restore();
+        // Right hand (slightly below center)
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // align with slingshot direction
+        ctx.beginPath();
+        ctx.arc(player.radius + 10, 6, 7, 0, Math.PI * 2); // just before slingshot, below
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        ctx.restore();
+      } else if (player.currentWeapon === 'axe' && player.hasAxe) {
+        // Draw left hand (rotated 45 degrees clockwise around the body)
+        ctx.beginPath();
+        ctx.arc(-player.radius * 0.707 - 8, player.radius * 0.707, 8, 0, Math.PI * 2);
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff'; // Gray when dead
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        // Draw right hand (rotated 90 degrees clockwise around the body)
+        ctx.beginPath();
+        ctx.arc(0, player.radius + 8, 8, 0, Math.PI * 2);
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff'; // Gray when dead
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+      } else {
+        // Default hand positions
+      // Draw left hand
+      ctx.beginPath();
+      ctx.arc(-player.radius - 8, 0, 8, 0, Math.PI * 2);
+      ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff'; // Gray when dead
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 5;
+      ctx.fill();
+      // Draw right hand
+      ctx.beginPath();
+      ctx.arc(player.radius + 8, 0, 8, 0, Math.PI * 2);
+      ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff'; // Gray when dead
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 5;
+      ctx.fill();
+      }
+      
+      // Draw eyes to show forward direction
+      ctx.fillStyle = '#000000';
+      // Left eye
+      ctx.beginPath();
+      ctx.arc(-8, 8, 3, 0, Math.PI * 2);
+      ctx.fill();
+      // Right eye
+      ctx.beginPath();
+      ctx.arc(8, 8, 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw weapon in hand
+      if (player.currentWeapon === 'sword' && player.hasSword) {
+        // Draw sword
+        ctx.fillStyle = '#c0c0c0';
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#8B4513';
+        // Sword handle
+        ctx.beginPath();
+        ctx.arc(player.radius + 15, 0, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        // Sword blade
+        if (player.swordAnimation > 0) {
+          // Animated sword swing - full 180 degrees
+          const swingAngle = (1 - player.swordAnimation) * Math.PI; // Full 180 degrees
+          ctx.save();
+          ctx.rotate(swingAngle);
+          ctx.fillStyle = '#e0e0e0';
+          ctx.fillRect(player.radius + 20, -2, 30, 4);
+          ctx.restore();
+        } else {
+          // Normal sword position
+          ctx.fillStyle = '#e0e0e0';
+          ctx.fillRect(player.radius + 20, -2, 30, 4);
+        }
+      } else if (player.currentWeapon === 'slingshot' && player.hasSlingshot) {
+        // Draw slingshot closer to the body
+        if (slingShotImg.complete) {
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          ctx.drawImage(slingShotImg, player.radius + 2, -16, 28, 28); // closer and smaller
+          ctx.restore();
+        } else {
+          // Fallback: draw a simple slingshot
+          ctx.fillStyle = '#8B4513';
+          ctx.fillRect(player.radius + 10, -6, 5, 12);
+          ctx.beginPath();
+          ctx.moveTo(player.radius + 12, -6);
+          ctx.lineTo(player.radius + 18, 0);
+          ctx.lineTo(player.radius + 12, 6);
+          ctx.strokeStyle = '#333';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      } else if (player.currentWeapon === 'axe' && player.hasAxe) {
+        // Draw axe in hand with forward jump animation
+        if (axeImg.complete) {
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          
+          if (player.axeAnimation > 0) {
+            // Animated axe - jumping forward motion
+            const jumpProgress = 1 - player.axeAnimation;
+            const jumpDistance = jumpProgress * 50; // Much bigger jump forward (50 pixels)
+            const jumpHeight = Math.sin(jumpProgress * Math.PI) * 20; // Higher jump
+            ctx.translate(jumpDistance, -jumpHeight);
+            ctx.drawImage(axeImg, player.radius + 2, -28, 48, 48);
+          } else {
+            // Normal axe position
+            ctx.drawImage(axeImg, player.radius + 2, -28, 48, 48);
+          }
+          
+          ctx.restore();
+        } else {
+          // Fallback: draw a simple axe
+          ctx.fillStyle = '#8B4513';
+          ctx.fillRect(player.radius + 10, -8, 6, 16);
+          ctx.fillStyle = '#654321';
+          
+          if (player.axeAnimation > 0) {
+            // Animated fallback axe - jumping forward
+            const jumpProgress = 1 - player.axeAnimation;
+            const jumpDistance = jumpProgress * 50; // Much bigger jump forward
+            const jumpHeight = Math.sin(jumpProgress * Math.PI) * 20; // Higher jump
+            ctx.save();
+            ctx.translate(jumpDistance, -jumpHeight);
+            ctx.fillRect(player.radius + 16, -14, 14, 28);
+            ctx.restore();
+          } else {
+            // Normal fallback axe position
+            ctx.fillRect(player.radius + 16, -14, 14, 28);
+          }
+        }
+      }
+      
+      ctx.restore();
+    }
+
+    function draw() {
+      if (worldData.length === 0) {
+        return;
+      }
+      const startCol = Math.floor(camera.x / TILE_SIZE);
+      const endCol = Math.ceil((camera.x + camera.width) / TILE_SIZE);
+      const startRow = Math.floor(camera.y / TILE_SIZE);
+      const endRow = Math.ceil((camera.y + camera.height) / TILE_SIZE);
+      // Draw all tiles and items first
+      for (let row = startRow; row < endRow; row++) {
+        for (let col = startCol; col < endCol; col++) {
+          if (row < 0 || row >= worldData.length || col < 0 || col >= worldData[0].length) continue;
+          const cell = worldData[row][col];
+          const tileX = col * TILE_SIZE - camera.x;
+          const tileY = row * TILE_SIZE - camera.y;
+          // Draw base
+          let imgToDraw = grassImg;
+          if (cell.base === 'X' && brickImg.complete) imgToDraw = brickImg;
+          else if (cell.base === 'O' && plankImg.complete) imgToDraw = plankImg;
+          else if (cell.base === 'D' && dirtImg.complete) imgToDraw = dirtImg;
+          else if (cell.base === 'W' && waterImg.complete) imgToDraw = waterImg;
+          if (cell.base === 'B') {
+            if (bushImg.complete) ctx.drawImage(bushImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#2ecc71';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = '#27ae60';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/4, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            // Do NOT continue; allow item drawing below
+          } else if (cell.base === 'S') {
+            if (startBlockImg.complete) ctx.drawImage(startBlockImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#e74c3c';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = '#ffffff';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+            }
+            continue;
+          } else if (cell.base === '#') {
+            // Empty
+            continue;
+          } else if (cell.base !== 'B') {
+            ctx.drawImage(imgToDraw, tileX, tileY, TILE_SIZE, TILE_SIZE);
+          }
+          // Draw item (sword, slingshot, etc.) ON TOP of base/bush
+          if (cell.item === 'W') {
+            if (swordImg.complete) ctx.drawImage(swordImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#c0c0c0';
+              ctx.fillRect(tileX + TILE_SIZE/4, tileY + TILE_SIZE/4, TILE_SIZE/2, TILE_SIZE/2);
+              ctx.fillStyle = '#8B4513';
+              ctx.fillRect(tileX + TILE_SIZE/3, tileY + TILE_SIZE/2, TILE_SIZE/6, TILE_SIZE/3);
+            }
+          } else if (cell.item === 'L') {
+            if (slingShotImg.complete) ctx.drawImage(slingShotImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#8B4513';
+              ctx.fillRect(tileX + TILE_SIZE/4, tileY + TILE_SIZE/4, TILE_SIZE/2, TILE_SIZE/2);
+              ctx.fillStyle = '#333';
+              ctx.fillRect(tileX + TILE_SIZE/3, tileY + TILE_SIZE/2, TILE_SIZE/6, TILE_SIZE/3);
+            }
+          } else if (cell.item === 'A') {
+            if (axeImg.complete) ctx.drawImage(axeImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#8B4513';
+              ctx.fillRect(tileX + TILE_SIZE/4, tileY + TILE_SIZE/4, TILE_SIZE/2, TILE_SIZE/2);
+              ctx.fillStyle = '#654321';
+              ctx.fillRect(tileX + TILE_SIZE/3, tileY + TILE_SIZE/2, TILE_SIZE/6, TILE_SIZE/3);
+            }
+          } else if (cell.item === 'E' || cell.item === 'Z') {
+            // Draw enemy (red or blue)
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+            ctx.fillStyle = cell.item === 'E' ? '#e74c3c' : '#3498db';
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.restore();
+          } else if (cell.item === 'S') {
+            // Draw start block
+            if (startBlockImg.complete) ctx.drawImage(startBlockImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#e74c3c';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 2;
+              ctx.stroke();
+            }
+          }
+          if (cell.item === 'B') {
+            if (bushImg.complete) ctx.drawImage(bushImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#2ecc71';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = '#27ae60';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/4, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          if (cell.item === 'H') {
+            if (blueHeartImg.complete) ctx.drawImage(blueHeartImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#3498db';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          } else if (cell.item === 'O') {
+            // Draw boulder
+            if (boulderImg.complete) ctx.drawImage(boulderImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            else {
+              ctx.fillStyle = '#8B7355';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/2, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.fillStyle = '#696969';
+              ctx.beginPath();
+              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          } else if (cell.item === 'T') {
+            // Draw tree (2x2 size) - only draw on the top-left corner of the tree
+            // Check if this is the top-left corner of a tree
+            if (col > 0 && row > 0) {
+              const leftCell = worldData[row][col - 1];
+              const topCell = worldData[row - 1][col];
+              const topLeftCell = worldData[row - 1][col - 1];
+              
+              // Only draw if this is the top-left corner of a 2x2 tree
+              if (leftCell.item === 'T' && topCell.item === 'T' && topLeftCell.item === 'T') {
+                if (treeImg.complete) {
+                  ctx.drawImage(treeImg, tileX - TILE_SIZE, tileY - TILE_SIZE, TILE_SIZE * 2, TILE_SIZE * 2);
+                } else {
+                  // Fallback tree drawing
+                  ctx.fillStyle = '#8B4513';
+                  ctx.fillRect(tileX - TILE_SIZE + TILE_SIZE/3, tileY, TILE_SIZE/3, TILE_SIZE * 2);
+                  ctx.fillStyle = '#228B22';
+                  ctx.beginPath();
+                  ctx.arc(tileX, tileY, TILE_SIZE, 0, Math.PI * 2);
+                  ctx.fill();
+                }
+              }
+            } else if (col === 0 && row === 0) {
+              // Special case for top-left corner of map
+              if (treeImg.complete) {
+                ctx.drawImage(treeImg, tileX, tileY, TILE_SIZE * 2, TILE_SIZE * 2);
+              } else {
+                // Fallback tree drawing
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(tileX + TILE_SIZE/3, tileY, TILE_SIZE/3, TILE_SIZE * 2);
+                ctx.fillStyle = '#228B22';
+                ctx.beginPath();
+                ctx.arc(tileX + TILE_SIZE, tileY + TILE_SIZE, TILE_SIZE, 0, Math.PI * 2);
+                ctx.fill();
+        }
+      }
+          }
+        }
+      }
+      // Draw hearts on ground on top of all tiles/items
+      for (let heart of hearts) {
+        if (!heart.collected) {
+          drawHeart(heart.x - camera.x, heart.y - camera.y, true);
+        }
+      }
+      // Draw rocks on ground on top of all tiles/items
+      for (let rock of rocks) {
+        if (!rock.collected) {
+          drawRock(rock.x - camera.x, rock.y - camera.y);
+        }
+      }
+      // Draw projectiles (rocks shot from slingshot) on top of all tiles/items
+      for (const proj of projectiles) {
+        if (!proj.alive) continue;
+        ctx.save();
+        if (rockImg.complete) {
+          ctx.drawImage(rockImg, proj.x - camera.x - 10, proj.y - camera.y - 10, 20, 20);
+        } else {
+          ctx.beginPath();
+          ctx.arc(proj.x - camera.x, proj.y - camera.y, proj.radius, 0, Math.PI * 2);
+          ctx.fillStyle = '#111';
+          ctx.shadowColor = '#000';
+          ctx.shadowBlur = 6;
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Draw damage animations
+      for (const anim of damageAnimations) {
+        drawDamageAnimation(anim);
+      }
+      // Draw enemies
+      enemies.forEach(enemy => {
+        drawEnemy(enemy, enemy.x - camera.x, enemy.y - camera.y);
+        // Draw enemy health
+        drawEnemyHealth(enemy, enemy.x - camera.x, enemy.y - camera.y);
+      });
+
+      // Draw player with hands
+      drawPlayer(player.x - camera.x, player.y - camera.y);
+      
+      // Draw roofs for houses (if player not inside that house) LAST, to cover everything
+      if (roofImg.complete) {
+        for (const house of houses) {
+          // Check if player is inside this house
+          let playerInside = false;
+          const playerCol = Math.floor(player.x / TILE_SIZE);
+          const playerRow = Math.floor(player.y / TILE_SIZE);
+          for (const tile of house.tiles) {
+            if (tile.row === playerRow && tile.col === playerCol) {
+              playerInside = true;
+              break;
+            }
+          }
+          if (!playerInside) {
+            for (const tile of house.tiles) {
+              const tileX = tile.col * TILE_SIZE - camera.x;
+              const tileY = tile.row * TILE_SIZE - camera.y;
+              ctx.drawImage(roofImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            }
+          }
+        }
+      }
+      // Draw player health and rocks UI on top of everything
+      drawPlayerHealth();
+      drawRockCountUI();
+      // Draw woods on ground on top of all tiles/items
+      for (let wood of woods) {
+        if (!wood.collected) {
+          drawWood(wood.x - camera.x, wood.y - camera.y);
+        }
+      }
+    }
+
+    function gameLoop() {
+      if (gameOver) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      update();
+      if (grassImg.complete) {
+        draw();
+      }
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Import world functions
+    function importWorld() {
+      const worldText = document.getElementById('worldData').value.trim();
+      if (!worldText) {
+        alert('Please paste world data first!');
+        return;
+      }
+      const lines = worldText.split('\n').filter(line => line.trim());
+      if (lines.length === 0) {
+        alert('Invalid world data!');
+        return;
+      }
+      // Detect if two-character-per-tile format
+      let isTwoChar = lines[0].length % 2 === 0;
+      worldData = [];
+      if (isTwoChar) {
+        for (let row = 0; row < lines.length; row++) {
+          const arr = [];
+          for (let col = 0; col < lines[row].length; col += 2) {
+            const base = lines[row][col];
+            const item = lines[row][col + 1];
+            let baseType = '.';
+            switch (base) {
+              case '.': baseType = '.'; break;
+              case 'O': baseType = 'O'; break;
+              case 'D': baseType = 'D'; break;
+              case 'X': baseType = 'X'; break;
+              case 'W': baseType = 'W'; break; // Water
+              case '#': baseType = '#'; break;
+            }
+            let itemType = null;
+            switch (item) {
+              case 'W': itemType = 'W'; break;
+              case 'L': itemType = 'L'; break;
+              case 'S': itemType = 'S'; break;
+              case 'E': itemType = 'E'; break;
+              case 'Z': itemType = 'Z'; break;
+              case 'B': itemType = 'B'; break;
+              case 'H': itemType = 'H'; break; // Added 'H' for blue heart
+              case 'M': itemType = 'M'; break; // Added 'M' for brown enemy
+              case 'O': itemType = 'O'; break; // Added 'O' for boulder
+              case 'A': itemType = 'A'; break; // Added 'A' for axe
+              case 'T': itemType = 'T'; break; // Added 'T' for tree
+              default: itemType = null; break;
+            }
+            arr.push({ base: baseType, item: itemType });
+          }
+          worldData.push(arr);
+        }
+      } else {
+        // Old format
+        worldData = lines.map(line => line.split('').map(ch => ({ base: ch, item: null })));
+      }
+      MAP_ROWS = worldData.length;
+      MAP_COLS = worldData[0].length;
+      // Find start position
+      startPosition = findStartPosition();
+      if (startPosition) {
+        player.x = startPosition.x * TILE_SIZE;
+        player.y = startPosition.y * TILE_SIZE;
+      } else {
+        // Default to center if no start point found
+        player.x = Math.floor(MAP_COLS / 2) * TILE_SIZE;
+        player.y = Math.floor(MAP_ROWS / 2) * TILE_SIZE;
+      }
+      // Initialize enemies
+      initializeEnemies();
+      // Initialize tree health
+      initializeTreeHealth();
+      // Hide import section
+      document.getElementById('importSection').style.display = 'none';
+      detectHouses();
+      // Start game
+      gameLoop();
+    }
+    
+    function loadDefaultWorld() {
+      worldData = DEFAULT_WORLD.map(line => line.split('').map(ch => ({ base: ch, item: null })));
+      MAP_ROWS = worldData.length;
+      MAP_COLS = worldData[0].length;
+      
+      // Set player to center
+      player.x = Math.floor(MAP_COLS / 2) * TILE_SIZE;
+      player.y = Math.floor(MAP_ROWS / 2) * TILE_SIZE;
+      
+      // Initialize enemies
+      initializeEnemies();
+      // Initialize tree health
+      initializeTreeHealth();
+      player.maxHealth = 3; // Reset max health
+      player.health = 3; // Reset current health
+      
+      // Hide import section
+      document.getElementById('importSection').style.display = 'none';
+      
+      detectHouses();
+      
+      // Start game
+      gameLoop();
+    }
+    
+    function findStartPosition() {
+      for (let row = 0; row < worldData.length; row++) {
+        for (let col = 0; col < worldData[row].length; col++) {
+          if (worldData[row][col].item === 'S') {
+            return { x: col, y: row };
+          }
+        }
+      }
+      return null;
+    }
+    
+    function initializeEnemies() {
+      enemies = [];
+      for (let row = 0; row < worldData.length; row++) {
+        for (let col = 0; col < worldData[row].length; col++) {
+          const cell = worldData[row][col];
+          if (cell.item === 'E') {
+            enemies.push({
+              x: col * TILE_SIZE + TILE_SIZE / 2,
+              y: row * TILE_SIZE + TILE_SIZE / 2,
+              radius: 24,
+              health: 2,
+              angle: 0,
+              speed: player.speed * 0.8, // 0.8 times player speed
+              hasSword: true,
+              swordAnimation: 0,
+              swordCooldown: 0,
+              isChasing: false,
+              type: 'red'
+            });
+            cell.item = null;
+          } else if (cell.item === 'Z') {
+            enemies.push({
+              x: col * TILE_SIZE + TILE_SIZE / 2,
+              y: row * TILE_SIZE + TILE_SIZE / 2,
+              radius: 24,
+              health: 1,
+              angle: 0,
+              speed: player.speed * 0.8,
+              hasSword: true,
+              swordAnimation: 0,
+              swordCooldown: 0,
+              isChasing: false,
+              type: 'blue'
+            });
+            cell.item = null;
+          } else if (cell.item === 'M') {
+            enemies.push({
+              x: col * TILE_SIZE + TILE_SIZE / 2,
+              y: row * TILE_SIZE + TILE_SIZE / 2,
+              radius: 24,
+              health: 2,
+              angle: 0,
+              speed: player.speed * 0.08, // 1/10 normal speed
+              hasSlingshot: true,
+              slingshotCooldown: 0,
+              isChasing: false,
+              type: 'brown',
+              frantic: false,
+              franticTimer: 0,
+              franticDir: 1,
+              franticOsc: 0
+            });
+            cell.item = null;
+          }
+        }
+      }
+    }
+
+    function initializeTreeHealth() {
+      // Clear existing tree health
+      treeHealth.clear();
+      
+      // Initialize health for all trees
+      for (let row = 0; row < worldData.length; row++) {
+        for (let col = 0; col < worldData[row].length; col++) {
+          if (worldData[row][col].item === 'T') {
+            // Only set health for the top-left corner of each 2x2 tree
+            if (row > 0 && col > 0) {
+              const leftCell = worldData[row][col - 1];
+              const topCell = worldData[row - 1][col];
+              const topLeftCell = worldData[row - 1][col - 1];
+              
+              // Only set health if this is the top-left corner of a 2x2 tree
+              if (leftCell.item === 'T' && topCell.item === 'T' && topLeftCell.item === 'T') {
+                treeHealth.set(`${row},${col}`, 3);
+              }
+            } else if (row === 0 && col === 0) {
+              // Special case for top-left corner of map
+              treeHealth.set(`${row},${col}`, 3);
+            }
+          }
+        }
+      }
+    }
+    
+    function drawEnemy(enemy, x, y) {
+      ctx.save();
+      // For brown enemy in frantic state, oscillate head angle
+      let drawAngle = enemy.angle;
+      if (enemy.type === 'brown' && enemy.frantic && enemy.franticTimer > 0) {
+        // Oscillate head left/right rapidly (e.g. 8 times per second)
+        const t = enemy.franticTimer;
+        drawAngle += Math.sin(Date.now() / 60) * 0.8; // wiggle head left/right
+      }
+      ctx.translate(x, y);
+      ctx.rotate(drawAngle - Math.PI / 2);
+      
+      // Draw main body first (background layer)
+      ctx.beginPath();
+      ctx.arc(0, 0, enemy.radius, 0, Math.PI * 2);
+      if (enemy.type === 'brown') {
+        ctx.fillStyle = '#8B4513';
+      } else if (enemy.type === 'blue') {
+        ctx.fillStyle = '#3498db';
+      } else {
+        ctx.fillStyle = '#e74c3c';
+      }
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 10;
+      ctx.fill();
+      
+      // Draw eyes (middle layer)
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(-8, 8, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(8, 8, 3, 0, Math.PI * 2);
+      ctx.fill();
+      
+      // Draw hands (front layer)
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 5;
+      if (enemy.type === 'brown') {
+        // For brown enemy, draw hands in front holding the slingshot, rotated 90 degrees counter-clockwise
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // 90 degrees counter-clockwise
+        
+        // Draw left hand
+        ctx.beginPath();
+        ctx.arc(enemy.radius + 5, -8, 8, 0, Math.PI * 2);
+        ctx.fillStyle = '#8B4513';
+        ctx.fill();
+        // Draw right hand
+        ctx.beginPath();
+        ctx.arc(enemy.radius + 5, 8, 8, 0, Math.PI * 2);
+        ctx.fillStyle = '#8B4513';
+        ctx.fill();
+        
+        ctx.restore();
+      } else {
+        // For other enemies, draw hands on sides as before
+        // Draw left hand
+        ctx.beginPath();
+        ctx.arc(-enemy.radius - 8, 0, 8, 0, Math.PI * 2);
+        if (enemy.type === 'blue') {
+          ctx.fillStyle = '#3498db';
+        } else {
+          ctx.fillStyle = '#e74c3c';
+        }
+      ctx.fill();
+      // Draw right hand
+      ctx.beginPath();
+      ctx.arc(enemy.radius + 8, 0, 8, 0, Math.PI * 2);
+        if (enemy.type === 'blue') {
+          ctx.fillStyle = '#3498db';
+        } else {
+          ctx.fillStyle = '#e74c3c';
+        }
+      ctx.fill();
+      }
+      
+      // Draw weapon last (frontmost layer)
+      if (enemy.type === 'brown') {
+        // Draw slingshot for brown enemy using the same image as player, rotated 90 degrees counter-clockwise
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // 90 degrees counter-clockwise
+        
+        if (slingShotImg.complete) {
+          // Draw slingshot between the hands
+          ctx.drawImage(slingShotImg, enemy.radius + 8, -12, 24, 24);
+        } else {
+          // Fallback drawing if image not loaded
+          ctx.fillStyle = '#8B4513';
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#654321';
+          // Draw slingshot handle
+      ctx.beginPath();
+          ctx.moveTo(enemy.radius + 8, -8);
+          ctx.lineTo(enemy.radius + 23, -8);
+          ctx.lineTo(enemy.radius + 23, 8);
+          ctx.lineTo(enemy.radius + 8, 8);
+          ctx.closePath();
+      ctx.fill();
+          ctx.stroke();
+          // Draw slingshot arms
+      ctx.beginPath();
+          ctx.moveTo(enemy.radius + 13, -12);
+          ctx.lineTo(enemy.radius + 33, -12);
+          ctx.moveTo(enemy.radius + 13, 12);
+          ctx.lineTo(enemy.radius + 33, 12);
+          ctx.stroke();
+          // Draw sling pouch
+          ctx.fillStyle = '#654321';
+          ctx.beginPath();
+          ctx.ellipse(enemy.radius + 33, 0, 8, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+          ctx.stroke();
+        }
+        
+        ctx.restore();
+      } else {
+        // Draw sword for other enemies
+      ctx.fillStyle = '#c0c0c0';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#8B4513';
+      ctx.beginPath();
+      ctx.arc(enemy.radius + 15, 0, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      if (enemy.swordAnimation > 0) {
+        const swingAngle = (1 - enemy.swordAnimation) * Math.PI;
+        ctx.save();
+        ctx.rotate(swingAngle);
+        ctx.fillStyle = '#e0e0e0';
+        ctx.fillRect(enemy.radius + 20, -2, 30, 4);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = '#e0e0e0';
+        ctx.fillRect(enemy.radius + 20, -2, 30, 4);
+        }
+      }
+      ctx.restore();
+    }
+    
+    function drawHeart(x, y, filled) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(0.8, 0.8);
+      
+      ctx.fillStyle = filled ? '#e74c3c' : '#666';
+      ctx.strokeStyle = '#e74c3c';
+      ctx.lineWidth = 2;
+      
+      // Draw heart shape
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(-8, -8, -16, -4, -16, 4);
+      ctx.bezierCurveTo(-16, 12, -8, 16, 0, 20);
+      ctx.bezierCurveTo(8, 16, 16, 12, 16, 4);
+      ctx.bezierCurveTo(16, -4, 8, -8, 0, 0);
+      ctx.fill();
+      ctx.stroke();
+      
+      ctx.restore();
+    }
+    
+    function drawPlayerHealth() {
+      const heartSize = 20;
+      const spacing = 25;
+      const startX = 20; // Move to upper left
+      const startY = 20;
+      const maxHearts = player.maxHealth;
+      for (let i = 0; i < maxHearts; i++) {
+        const filled = i < player.health;
+        drawHeart(startX + (i * spacing), startY, filled);
+      }
+    }
+    
+    function drawEnemyHealth(enemy, x, y) {
+      const heartSize = 15;
+      const spacing = 20;
+      const startX = x - 20;
+      const startY = y - 40;
+      const maxHearts = enemy.type === 'blue' ? 1 : 2;
+      for (let i = 0; i < maxHearts; i++) {
+        const filled = i < enemy.health;
+        drawHeart(startX + (i * spacing), startY, filled);
+      }
+    }
+    
+    // --- A* Pathfinding for Enemies ---
+    function astarPath(start, goal, isBlocked) {
+      const [rows, cols] = [MAP_ROWS, MAP_COLS];
+      const openSet = [];
+      const cameFrom = {};
+      const gScore = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
+      const fScore = Array.from({ length: rows }, () => Array(cols).fill(Infinity));
+      function hash(pos) { return pos.row + "," + pos.col; }
+      function neighbors(pos) {
+        const dirs = [
+          { dr: -1, dc: 0 }, // up
+          { dr: 1, dc: 0 },  // down
+          { dr: 0, dc: -1 }, // left
+          { dr: 0, dc: 1 }   // right
+        ];
+        const result = [];
+        for (const { dr, dc } of dirs) {
+          const nr = pos.row + dr, nc = pos.col + dc;
+          if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !isBlocked(nr, nc)) {
+            result.push({ row: nr, col: nc });
+          }
+        }
+        return result;
+      }
+      function heuristic(a, b) {
+        return Math.abs(a.row - b.row) + Math.abs(a.col - b.col);
+      }
+      gScore[start.row][start.col] = 0;
+      fScore[start.row][start.col] = heuristic(start, goal);
+      openSet.push({ ...start, f: fScore[start.row][start.col] });
+      while (openSet.length > 0) {
+        openSet.sort((a, b) => a.f - b.f);
+        const current = openSet.shift();
+        if (current.row === goal.row && current.col === goal.col) {
+          // Reconstruct path
+          const path = [];
+          let curr = hash(goal);
+          while (cameFrom[curr]) {
+            path.unshift(cameFrom[curr].to);
+            curr = cameFrom[curr].from;
+          }
+          return path;
+        }
+        for (const neighbor of neighbors(current)) {
+          const tentative_g = gScore[current.row][current.col] + 1;
+          if (tentative_g < gScore[neighbor.row][neighbor.col]) {
+            cameFrom[hash(neighbor)] = { from: hash(current), to: neighbor };
+            gScore[neighbor.row][neighbor.col] = tentative_g;
+            fScore[neighbor.row][neighbor.col] = tentative_g + heuristic(neighbor, goal);
+            if (!openSet.some(n => n.row === neighbor.row && n.col === neighbor.col)) {
+              openSet.push({ ...neighbor, f: fScore[neighbor.row][neighbor.col] });
+            }
+          }
+        }
+      }
+      return null; // No path
+    }
+
+    // --- Line-of-sight check for enemy direct pursuit ---
+    function hasLineOfSight(enemy, player) {
+      const startCol = Math.floor(enemy.x / TILE_SIZE);
+      const startRow = Math.floor(enemy.y / TILE_SIZE);
+      const endCol = Math.floor(player.x / TILE_SIZE);
+      const endRow = Math.floor(player.y / TILE_SIZE);
+      let x0 = startCol, y0 = startRow, x1 = endCol, y1 = endRow;
+      const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx - dy;
+      while (x0 !== x1 || y0 !== y1) {
+        if (worldData[y0][x0].base === 'X' || worldData[y0][x0].item === 'B') return false;
+        const e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x0 += sx; }
+        if (e2 < dx) { err += dx; y0 += sy; }
+      }
+      return true;
+    }
+
+    // Utility: canPushEnemy checks if an enemy can be pushed to a new position
+    function canPushEnemy(enemy, pushX, pushY, enemies, ignoreEnemy) {
+      if (checkCollision(pushX, pushY)) return false;
+      for (const other of enemies) {
+        if (other !== enemy && other !== ignoreEnemy && isCircleOverlap(pushX, pushY, enemy.radius, other.x, other.y, other.radius)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // Update enemy knockback and stun in updateEnemies
+    function updateEnemies() {
+      enemies.forEach((enemy, index) => {
+        if (enemy.type === 'brown') {
+          // Frantic state: run directly away from player
+          if (enemy.frantic && enemy.franticTimer > 0) {
+            enemy.franticTimer--;
+            // Move directly away from player
+            const awayAngle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+            const franticSpeed = player.speed * 1.2;
+            const moveX = Math.cos(awayAngle) * franticSpeed;
+            const moveY = Math.sin(awayAngle) * franticSpeed;
+            if (!checkCollision(enemy.x + moveX, enemy.y + moveY)) {
+              enemy.x += moveX;
+              enemy.y += moveY;
+            }
+            // Shooting logic (still fires at player if in range)
+            const dx = player.x - enemy.x;
+            const dy = player.y - enemy.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const distanceInTiles = distance / TILE_SIZE;
+            if (distanceInTiles > 0 && distanceInTiles <= 7 && enemy.slingshotCooldown <= 0) {
+              enemy.angle = Math.atan2(dy, dx);
+              projectiles.push({
+                x: enemy.x + Math.cos(enemy.angle) * (enemy.radius + 10),
+                y: enemy.y + Math.sin(enemy.angle) * (enemy.radius + 10),
+                angle: enemy.angle,
+                speed: 10,
+                radius: 7,
+                alive: true,
+                distanceTraveled: 0,
+                maxDistance: 6 * TILE_SIZE,
+                fromEnemy: true
+              });
+              enemy.slingshotCooldown = 180; // 3 seconds
+            }
+            if (enemy.slingshotCooldown > 0) enemy.slingshotCooldown--;
+            if (enemy.franticTimer <= 0) {
+              enemy.frantic = false;
+            }
+            return;
+          }
+          // If not frantic, chase like a normal enemy if within 7 tiles, else slow oscillate
+          const dx = player.x - enemy.x;
+          const dy = player.y - enemy.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const distanceInTiles = distance / TILE_SIZE;
+          if (distanceInTiles > 0 && distanceInTiles <= 7) {
+            // Use normal enemy chasing/pathfinding logic, but at brown's slow speed
+            enemy.isChasing = true;
+            enemy.angle = Math.atan2(dy, dx);
+            let moved = false;
+            // Use line-of-sight for direct pursuit
+            if (distanceInTiles <= 1.2 || hasLineOfSight(enemy, player)) {
+              const moveAngle = Math.atan2(dy, dx);
+              const newX = enemy.x + Math.cos(moveAngle) * enemy.speed;
+              const newY = enemy.y + Math.sin(moveAngle) * enemy.speed;
+              let blocked = false;
+              if (isCircleOverlap(newX, newY, enemy.radius, player.x, player.y, player.radius)) {
+                blocked = true;
+              }
+              for (let i = 0; i < enemies.length; i++) {
+                if (i !== index) {
+                  const other = enemies[i];
+                  if (isCircleOverlap(newX, newY, enemy.radius, other.x, other.y, other.radius)) {
+                    if ((other.knockback || other.stunTimer > 0) && canPushEnemy(other, other.x + (other.x - newX), other.y + (other.y - newY), enemies, enemy)) {
+                      // Push the stunned/knockback enemy away from this enemy
+                      const dx = other.x - newX;
+                      const dy = other.y - newY;
+                      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                      const overlap = enemy.radius + other.radius - dist;
+                      if (overlap > 0) {
+                        const pushX = other.x + (dx / dist) * overlap;
+                        const pushY = other.y + (dy / dist) * overlap;
+                        if (canPushEnemy(other, pushX, pushY, enemies, enemy)) {
+                          other.x = pushX;
+                          other.y = pushY;
+                          continue;
+                        }
+                      }
+                    }
+                    blocked = true; break;
+                  }
+                }
+              }
+              if (!blocked && !checkCollision(newX, newY)) {
+                enemy.x = newX;
+                enemy.y = newY;
+                moved = true;
+              }
+              enemy.path = null;
+              enemy.pathFollowing = false;
+            }
+            // If blocked or no line-of-sight, use A* pathfinding
+            if (!moved && (distanceInTiles > 1.2)) {
+              if (enemy.pathTimer <= 0 || !enemy.path || enemy.path.length === 0) {
+                const startCol = Math.floor(enemy.x / TILE_SIZE);
+                const startRow = Math.floor(enemy.y / TILE_SIZE);
+                const goalCol = Math.floor(player.x / TILE_SIZE);
+                const goalRow = Math.floor(player.y / TILE_SIZE);
+                enemy.path = astarPath(
+                  { row: startRow, col: startCol },
+                  { row: goalRow, col: goalCol },
+                  (r, c) => {
+                    if (worldData[r][c].base === 'X' || worldData[r][c].item === 'B') return true;
+                    for (let i = 0; i < enemies.length; i++) {
+                      if (i !== index) {
+                        const other = enemies[i];
+                        const or = Math.floor(other.y / TILE_SIZE);
+                        const oc = Math.floor(other.x / TILE_SIZE);
+                        if (or === r && oc === c) return true;
+                      }
+                    }
+                    if (r === goalRow && c === goalCol) return false;
+                    const pr = Math.floor(player.y / TILE_SIZE);
+                    const pc = Math.floor(player.x / TILE_SIZE);
+                    if (r === pr && c === pc) return true;
+                    return false;
+                  }
+                );
+                enemy.pathTimer = 10;
+              } else {
+                enemy.pathTimer--;
+              }
+              if (enemy.path && enemy.path.length > 0) {
+                enemy.pathFollowing = true;
+                const next = enemy.path[0];
+                const targetX = next.col * TILE_SIZE + TILE_SIZE / 2;
+                const targetY = next.row * TILE_SIZE + TILE_SIZE / 2;
+                const pathAngle = Math.atan2(targetY - enemy.y, targetX - enemy.x);
+                const pathX = enemy.x + Math.cos(pathAngle) * enemy.speed;
+                const pathY = enemy.y + Math.sin(pathAngle) * enemy.speed;
+                let pathBlocked = false;
+                if (isCircleOverlap(pathX, pathY, enemy.radius, player.x, player.y, player.radius)) {
+                  pathBlocked = true;
+                }
+                for (let i = 0; i < enemies.length; i++) {
+                  if (i !== index) {
+                    const other = enemies[i];
+                    if (isCircleOverlap(pathX, pathY, enemy.radius, other.x, other.y, other.radius)) {
+                      if ((other.knockback || other.stunTimer > 0) && canPushEnemy(other, other.x + (other.x - pathX), other.y + (other.y - pathY), enemies, enemy)) {
+                        // Push the stunned/knockback enemy away from this enemy
+                        const dx = other.x - pathX;
+                        const dy = other.y - pathY;
+                        const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                        const overlap = enemy.radius + other.radius - dist;
+                        if (overlap > 0) {
+                          const pushX = other.x + (dx / dist) * overlap;
+                          const pushY = other.y + (dy / dist) * overlap;
+                          if (canPushEnemy(other, pushX, pushY, enemies, enemy)) {
+                            other.x = pushX;
+                            other.y = pushY;
+                            continue;
+                          }
+                        }
+                      }
+                      pathBlocked = true; break;
+                    }
+                  }
+                }
+                if (!pathBlocked && !checkCollision(pathX, pathY)) {
+                  enemy.x = pathX;
+                  enemy.y = pathY;
+                  if (Math.abs(enemy.x - targetX) < 8 && Math.abs(enemy.y - targetY) < 8) {
+                    enemy.path.shift();
+                  }
+                } else {
+                  enemy.pathTimer = 0;
+                }
+                // If path is finished or line-of-sight is restored, stop following path
+                if (!enemy.path || enemy.path.length === 0 || hasLineOfSight(enemy, player)) {
+                  enemy.pathFollowing = false;
+                  enemy.path = null;
+                }
+              } else {
+                enemy.pathFollowing = false;
+              }
+            }
+            // Shooting logic (still fires at player if in range)
+            if (distanceInTiles > 0 && distanceInTiles <= 7 && enemy.slingshotCooldown <= 0) {
+              enemy.angle = Math.atan2(dy, dx);
+              projectiles.push({
+                x: enemy.x + Math.cos(enemy.angle) * (enemy.radius + 10),
+                y: enemy.y + Math.sin(enemy.angle) * (enemy.radius + 10),
+                angle: enemy.angle,
+                speed: 10,
+                radius: 7,
+                alive: true,
+                distanceTraveled: 0,
+                maxDistance: 6 * TILE_SIZE,
+                fromEnemy: true
+              });
+              enemy.slingshotCooldown = 180; // 3 seconds
+            }
+            if (enemy.slingshotCooldown > 0) enemy.slingshotCooldown--;
+            return;
+          }
+          // Normal: move very slowly left/right (oscillate in place)
+          enemy.frantic = false;
+          enemy.speed = player.speed * 0.08; // 1/10 normal speed
+          if (!enemy.oscDir) enemy.oscDir = Math.random() < 0.5 ? 1 : -1;
+          if (!enemy.oscTimer) enemy.oscTimer = 0;
+          enemy.oscTimer++;
+          if (enemy.oscTimer % 60 === 0) enemy.oscDir *= -1;
+          const toPlayerAngle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+          const perpAngle = toPlayerAngle + Math.PI / 2 * enemy.oscDir;
+          const slowSpeed = player.speed * 0.08;
+          const moveX = Math.cos(perpAngle) * slowSpeed;
+          const moveY = Math.sin(perpAngle) * slowSpeed;
+          if (!checkCollision(enemy.x + moveX, enemy.y + moveY)) {
+            enemy.x += moveX;
+            enemy.y += moveY;
+          }
+          // Shooting logic (still fires at player if in range)
+          if (distanceInTiles > 0 && distanceInTiles <= 7 && enemy.slingshotCooldown <= 0) {
+            enemy.angle = Math.atan2(dy, dx);
+            projectiles.push({
+              x: enemy.x + Math.cos(enemy.angle) * (enemy.radius + 10),
+              y: enemy.y + Math.sin(enemy.angle) * (enemy.radius + 10),
+              angle: enemy.angle,
+              speed: 10,
+              radius: 7,
+              alive: true,
+              distanceTraveled: 0,
+              maxDistance: 6 * TILE_SIZE,
+              fromEnemy: true
+            });
+            enemy.slingshotCooldown = 180; // 3 seconds
+          }
+          if (enemy.slingshotCooldown > 0) enemy.slingshotCooldown--;
+          return;
+        }
+        // Handle knockback
+        if (enemy.knockback) {
+          const moveDist = Math.min(enemy.knockback.speed, enemy.knockback.remaining);
+          const newX = enemy.x + Math.cos(enemy.knockback.angle) * moveDist;
+          const newY = enemy.y + Math.sin(enemy.knockback.angle) * moveDist;
+          let blocked = false;
+          // Allow pushing stunned/knockback enemies
+          for (let i = 0; i < enemies.length; i++) {
+            if (i !== index) {
+              const other = enemies[i];
+              if (isCircleOverlap(newX, newY, enemy.radius, other.x, other.y, other.radius)) {
+                if ((other.knockback || other.stunTimer > 0) && canPushEnemy(other, other.x + (other.x - enemy.x), other.y + (other.y - enemy.y), enemies, enemy)) {
+                  // Push the stunned/knockback enemy away from this enemy
+                  const dx = other.x - enemy.x;
+                  const dy = other.y - enemy.y;
+                  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                  const overlap = enemy.radius + other.radius - dist;
+                  if (overlap > 0) {
+                    const pushX = other.x + (dx / dist) * overlap;
+                    const pushY = other.y + (dy / dist) * overlap;
+                    if (canPushEnemy(other, pushX, pushY, enemies, enemy)) {
+                      other.x = pushX;
+                      other.y = pushY;
+                      continue;
+                    }
+                  }
+                }
+                blocked = true;
+                break;
+              }
+            }
+          }
+          if (!blocked && enemy.knockback.remaining > 0 && !checkCollision(newX, newY)) {
+            enemy.x = newX;
+            enemy.y = newY;
+            enemy.knockback.remaining -= moveDist;
+          } else {
+            enemy.knockback = null;
+          }
+          // During knockback, skip normal behavior
+          return;
+        }
+        // Handle stun
+        if (enemy.stunTimer && enemy.stunTimer > 0) {
+          enemy.stunTimer--;
+          // During stun, skip normal behavior
+          return;
+        }
+        if (!enemy.pathTimer) enemy.pathTimer = 0;
+        if (!enemy.path) enemy.path = null;
+        if (!enemy.pathFollowing) enemy.pathFollowing = false;
+        const dx = player.x - enemy.x;
+        const dy = player.y - enemy.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const distanceInTiles = distance / TILE_SIZE;
+        if (distanceInTiles <= 5) {
+          enemy.isChasing = true;
+        } else {
+          enemy.isChasing = false;
+          enemy.path = null;
+          enemy.pathFollowing = false;
+        }
+        if (enemy.isChasing) {
+          enemy.angle = Math.atan2(dy, dx);
+          let moved = false;
+          // Use line-of-sight for direct pursuit
+          if (distanceInTiles <= 1.2 || hasLineOfSight(enemy, player)) {
+            const moveAngle = Math.atan2(dy, dx);
+            const newX = enemy.x + Math.cos(moveAngle) * enemy.speed;
+            const newY = enemy.y + Math.sin(moveAngle) * enemy.speed;
+            let blocked = false;
+            if (isCircleOverlap(newX, newY, enemy.radius, player.x, player.y, player.radius)) {
+              blocked = true;
+            }
+            for (let i = 0; i < enemies.length; i++) {
+              if (i !== index) {
+                const other = enemies[i];
+                if (isCircleOverlap(newX, newY, enemy.radius, other.x, other.y, other.radius)) {
+                  if ((other.knockback || other.stunTimer > 0) && canPushEnemy(other, other.x + (other.x - newX), other.y + (other.y - newY), enemies, enemy)) {
+                    // Push the stunned/knockback enemy away from this enemy
+                    const dx = other.x - newX;
+                    const dy = other.y - newY;
+                    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    const overlap = enemy.radius + other.radius - dist;
+                    if (overlap > 0) {
+                      const pushX = other.x + (dx / dist) * overlap;
+                      const pushY = other.y + (dy / dist) * overlap;
+                      if (canPushEnemy(other, pushX, pushY, enemies, enemy)) {
+                        other.x = pushX;
+                        other.y = pushY;
+                        continue;
+                      }
+                    }
+                  }
+                  blocked = true; break;
+                }
+              }
+            }
+            if (!blocked && !checkCollision(newX, newY)) {
+              enemy.x = newX;
+              enemy.y = newY;
+              moved = true;
+            }
+            enemy.path = null;
+            enemy.pathFollowing = false;
+          }
+          // If blocked or no line-of-sight, use A* pathfinding
+          if (!moved && (distanceInTiles > 1.2)) {
+            if (enemy.pathTimer <= 0 || !enemy.path || enemy.path.length === 0) {
+              const startCol = Math.floor(enemy.x / TILE_SIZE);
+              const startRow = Math.floor(enemy.y / TILE_SIZE);
+              const goalCol = Math.floor(player.x / TILE_SIZE);
+              const goalRow = Math.floor(player.y / TILE_SIZE);
+              enemy.path = astarPath(
+                { row: startRow, col: startCol },
+                { row: goalRow, col: goalCol },
+                (r, c) => {
+                  if (worldData[r][c].base === 'X' || worldData[r][c].item === 'B') return true;
+                  for (let i = 0; i < enemies.length; i++) {
+                    if (i !== index) {
+                      const other = enemies[i];
+                      const or = Math.floor(other.y / TILE_SIZE);
+                      const oc = Math.floor(other.x / TILE_SIZE);
+                      if (or === r && oc === c) return true;
+                    }
+                  }
+                  if (r === goalRow && c === goalCol) return false;
+                  const pr = Math.floor(player.y / TILE_SIZE);
+                  const pc = Math.floor(player.x / TILE_SIZE);
+                  if (r === pr && c === pc) return true;
+                  return false;
+                }
+              );
+              enemy.pathTimer = 10;
+            } else {
+              enemy.pathTimer--;
+            }
+            if (enemy.path && enemy.path.length > 0) {
+              enemy.pathFollowing = true;
+              const next = enemy.path[0];
+              const targetX = next.col * TILE_SIZE + TILE_SIZE / 2;
+              const targetY = next.row * TILE_SIZE + TILE_SIZE / 2;
+              const pathAngle = Math.atan2(targetY - enemy.y, targetX - enemy.x);
+              const pathX = enemy.x + Math.cos(pathAngle) * enemy.speed;
+              const pathY = enemy.y + Math.sin(pathAngle) * enemy.speed;
+              let pathBlocked = false;
+              if (isCircleOverlap(pathX, pathY, enemy.radius, player.x, player.y, player.radius)) {
+                pathBlocked = true;
+              }
+              for (let i = 0; i < enemies.length; i++) {
+                if (i !== index) {
+                  const other = enemies[i];
+                  if (isCircleOverlap(pathX, pathY, enemy.radius, other.x, other.y, other.radius)) {
+                    if ((other.knockback || other.stunTimer > 0) && canPushEnemy(other, other.x + (other.x - pathX), other.y + (other.y - pathY), enemies, enemy)) {
+                      // Push the stunned/knockback enemy away from this enemy
+                      const dx = other.x - pathX;
+                      const dy = other.y - pathY;
+                      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                      const overlap = enemy.radius + other.radius - dist;
+                      if (overlap > 0) {
+                        const pushX = other.x + (dx / dist) * overlap;
+                        const pushY = other.y + (dy / dist) * overlap;
+                        if (canPushEnemy(other, pushX, pushY, enemies, enemy)) {
+                          other.x = pushX;
+                          other.y = pushY;
+                          continue;
+                        }
+                      }
+                    }
+                    pathBlocked = true; break;
+                  }
+                }
+              }
+              if (!pathBlocked && !checkCollision(pathX, pathY)) {
+                enemy.x = pathX;
+                enemy.y = pathY;
+                if (Math.abs(enemy.x - targetX) < 8 && Math.abs(enemy.y - targetY) < 8) {
+                  enemy.path.shift();
+                }
+              } else {
+                enemy.pathTimer = 0;
+              }
+              // If path is finished or line-of-sight is restored, stop following path
+              if (!enemy.path || enemy.path.length === 0 || hasLineOfSight(enemy, player)) {
+                enemy.pathFollowing = false;
+                enemy.path = null;
+              }
+            } else {
+              enemy.pathFollowing = false;
+            }
+          }
+          if (enemy.swordCooldown <= 0) {
+            if (enemy.type === 'blue') {
+              if (distanceInTiles <= 1.5) {
+                enemy.swordAnimation = 1.0;
+                enemy.swordCooldown = 180;
+                if (distanceInTiles <= 1.5 && player.invulnerabilityTime <= 0) {
+                  player.health--;
+                  player.invulnerabilityTime = 120;
+                }
+              }
+            } else {
+              enemy.swordAnimation = 1.0;
+              enemy.swordCooldown = 180;
+              if (distanceInTiles <= 1.5 && player.invulnerabilityTime <= 0) {
+                player.health--;
+                player.invulnerabilityTime = 120;
+              }
+            }
+          }
+        }
+        if (enemy.swordAnimation > 0) {
+          enemy.swordAnimation -= 0.1;
+          if (enemy.swordAnimation < 0) enemy.swordAnimation = 0;
+        }
+        if (enemy.swordCooldown > 0) {
+          enemy.swordCooldown--;
+        }
+      });
+      // Remove all dead enemies, including brown
+      enemies = enemies.filter(enemy => enemy.health > 0);
+    }
+    
+    function checkPlayerSwordHit() {
+      if (!player.hasSword || player.swordAnimation <= 0) return;
+      // Sword hit arc now starts slightly behind the player
+      const baseSwordRangeStart = player.radius - 10;
+      const baseSwordRangeEnd = player.radius + 20 + 30;
+      const baseArcAngle = Math.PI * 1.1;
+      const baseAngleStep = Math.PI / 12;
+      const franticArcAngle = Math.PI * 1.7;
+      const franticRangeEnd = player.radius + 20 + 60;
+      const franticAngleStep = Math.PI / 18;
+      const startAngle = player.angle - baseArcAngle / 2;
+      enemies.forEach(enemy => {
+        // Use wider arc and longer range for brown frantic
+        let swordRangeStart = baseSwordRangeStart;
+        let swordRangeEnd = baseSwordRangeEnd;
+        let arcAngle = baseArcAngle;
+        let angleStep = baseAngleStep;
+        let localStartAngle = startAngle;
+        if (enemy.type === 'brown' && enemy.frantic && enemy.franticTimer > 0) {
+          swordRangeEnd = franticRangeEnd;
+          arcAngle = franticArcAngle;
+          angleStep = franticAngleStep;
+          localStartAngle = player.angle - arcAngle / 2;
+        }
+        if ((enemy.knockback || enemy.stunTimer > 0) && enemy.type !== 'brown') return; // Only skip for non-brown enemies
+        for (let i = 0; i <= Math.round(arcAngle / angleStep); i++) {
+          const currentAngle = localStartAngle + (angleStep * i);
+          for (let r = swordRangeStart; r <= swordRangeEnd; r += 8) {
+            const hitX = player.x + Math.cos(currentAngle) * r;
+            const hitY = player.y + Math.sin(currentAngle) * r;
+            const dx = hitX - enemy.x;
+            const dy = hitY - enemy.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance <= enemy.radius) {
+              enemy.health--;
+              // Gradual knockback: set knockback state
+              const knockbackDist = TILE_SIZE;
+              const angle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+              enemy.knockback = {
+                angle: angle,
+                remaining: knockbackDist,
+                speed: 6 // pixels per frame
+              };
+              enemy.stunTimer = 30; // 0.5 second stun after knockback
+              // If brown, trigger frantic only if not already frantic
+              if (enemy.type === 'brown' && !enemy.frantic) {
+                enemy.frantic = true;
+                enemy.franticTimer = 120; // 2 seconds at 60fps
+                enemy.franticOsc = 0;
+                enemy.franticDir = Math.random() < 0.5 ? 1 : -1;
+              }
+              if (enemy.type === 'brown') {
+                console.log('Brown enemy health:', enemy.health);
+              }
+              return; // Only hit once per swing
+            }
+          }
+        }
+      });
+    }
+
+    function checkPlayerAxeHit() {
+      if (!player.hasAxe || player.axeAnimation <= 0) return;
+      // Axe hit arc - much tighter than sword, mostly forward
+      const baseAxeRangeStart = player.radius + 10; // Start closer to player
+      const baseAxeRangeEnd = player.radius + 20 + TILE_SIZE; // About one tile forward
+      const baseArcAngle = Math.PI * 0.3; // Much narrower arc (about 54 degrees)
+      const baseAngleStep = Math.PI / 8; // Fewer angle checks for tighter arc
+      const franticArcAngle = Math.PI * 0.5; // Wider for frantic brown enemies
+      const franticRangeEnd = player.radius + 20 + TILE_SIZE * 1.5; // Slightly longer for frantic
+      const franticAngleStep = Math.PI / 10;
+      const startAngle = player.angle - baseArcAngle / 2;
+      
+
+      
+      enemies.forEach(enemy => {
+        // Use wider arc and longer range for brown frantic
+        let axeRangeStart = baseAxeRangeStart;
+        let axeRangeEnd = baseAxeRangeEnd;
+        let arcAngle = baseArcAngle;
+        let angleStep = baseAngleStep;
+        let localStartAngle = startAngle;
+        if (enemy.type === 'brown' && enemy.frantic && enemy.franticTimer > 0) {
+          axeRangeEnd = franticRangeEnd;
+          arcAngle = franticArcAngle;
+          angleStep = franticAngleStep;
+          localStartAngle = player.angle - arcAngle / 2;
+        }
+        if ((enemy.knockback || enemy.stunTimer > 0) && enemy.type !== 'brown') return; // Only skip for non-brown enemies
+        for (let i = 0; i <= Math.round(arcAngle / angleStep); i++) {
+          const currentAngle = localStartAngle + (angleStep * i);
+          for (let r = axeRangeStart; r <= axeRangeEnd; r += 8) {
+            const hitX = player.x + Math.cos(currentAngle) * r;
+            const hitY = player.y + Math.sin(currentAngle) * r;
+          const dx = hitX - enemy.x;
+          const dy = hitY - enemy.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance <= enemy.radius) {
+            enemy.health--;
+              // Double knockback for axe
+              const knockbackDist = TILE_SIZE * 2; // Double the knockback distance
+              const angle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+              enemy.knockback = {
+                angle: angle,
+                remaining: knockbackDist,
+                speed: 8 // Faster knockback speed
+              };
+              enemy.stunTimer = 45; // Longer stun (0.75 seconds)
+              // If brown, trigger frantic only if not already frantic
+              if (enemy.type === 'brown' && !enemy.frantic) {
+                enemy.frantic = true;
+                enemy.franticTimer = 120; // 2 seconds at 60fps
+                enemy.franticOsc = 0;
+                enemy.franticDir = Math.random() < 0.5 ? 1 : -1;
+              }
+              if (enemy.type === 'brown') {
+                console.log('Brown enemy health:', enemy.health);
+              }
+            return; // Only hit once per swing
+            }
+          }
+        }
+      });
+    }
+
+    function createDamageAnimation(startAngle, arcAngle, rangeStart, rangeEnd) {
+      // Create a damage animation that shows the axe swing area
+      damageAnimations.push({
+        x: player.x,
+        y: player.y,
+        startAngle: startAngle,
+        arcAngle: arcAngle,
+        rangeStart: rangeStart,
+        rangeEnd: rangeEnd,
+        timer: 15, // Animation duration in frames
+        maxTimer: 15
+      });
+    }
+    
+    // Start game when all images are loaded
+    let imagesLoaded = 0;
+    const totalImages = 12;
+    
+    function imageLoaded() {
+      imagesLoaded++;
+      if (imagesLoaded >= totalImages) {
+        // Don't auto-start, wait for user to import world
+      }
+    }
+    
+    grassImg.onload = imageLoaded;
+    brickImg.onload = imageLoaded;
+    plankImg.onload = imageLoaded;
+    dirtImg.onload = imageLoaded;
+    bushImg.onload = imageLoaded;
+    startBlockImg.onload = imageLoaded;
+    swordImg.onload = imageLoaded;
+    enemyImg.onload = imageLoaded;
+    roofImg.onload = imageLoaded;
+    slingShotImg.onload = imageLoaded;
+    rockImg.onload = imageLoaded;
+    blueHeartImg.onload = imageLoaded;
+    treeImg.onload = imageLoaded;
+    woodImg.onload = imageLoaded;
+    waterImg.onload = imageLoaded;
+
+    function isPlayerInsideHouse() {
+      const col = Math.floor(player.x / TILE_SIZE);
+      const row = Math.floor(player.y / TILE_SIZE);
+      for (const house of houses) {
+        for (const tile of house.tiles) {
+          if (tile.row === row && tile.col === col) return true;
+        }
+      }
+      return false;
+    }
+
+    function detectHouses() {
+      houses = [];
+      const visited = Array.from({ length: MAP_ROWS }, () => Array(MAP_COLS).fill(false));
+      for (let row = 0; row < MAP_ROWS; row++) {
+        for (let col = 0; col < MAP_COLS; col++) {
+          if (!visited[row][col] && (worldData[row][col].base === 'X' || worldData[row][col].base === 'O')) {
+            // Flood fill to find all connected 'X'/'O' tiles
+            const queue = [{ row, col }];
+            const region = [];
+            visited[row][col] = true;
+            while (queue.length > 0) {
+              const { row: r, col: c } = queue.shift();
+              region.push({ row: r, col: c });
+              for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+                const nr = r + dr, nc = c + dc;
+                if (nr >= 0 && nr < MAP_ROWS && nc >= 0 && nc < MAP_COLS && !visited[nr][nc] && (worldData[nr][nc].base === 'X' || worldData[nr][nc].base === 'O')) {
+                  visited[nr][nc] = true;
+                  queue.push({ row: nr, col: nc });
+                }
+              }
+            }
+            // Check if region is a rectangle
+            const rows = region.map(t => t.row);
+            const cols = region.map(t => t.col);
+            const minRow = Math.min(...rows), maxRow = Math.max(...rows);
+            const minCol = Math.min(...cols), maxCol = Math.max(...cols);
+            const expectedSize = (maxRow - minRow + 1) * (maxCol - minCol + 1);
+            if (region.length !== expectedSize) continue; // not a rectangle
+            // Check all tiles in rectangle are 'X' or 'O'
+            let valid = true;
+            for (let r = minRow; r <= maxRow; r++) {
+              for (let c = minCol; c <= maxCol; c++) {
+                if (worldData[r][c].base !== 'X' && worldData[r][c].base !== 'O') {
+                  valid = false;
+                  break;
+                }
+              }
+              if (!valid) break;
+            }
+            if (!valid) continue;
+            // Check corners are bricks
+            if (
+              worldData[minRow][minCol].base !== 'X' ||
+              worldData[minRow][maxCol].base !== 'X' ||
+              worldData[maxRow][minCol].base !== 'X' ||
+              worldData[maxRow][maxCol].base !== 'X'
+            ) continue;
+            // Store house
+            houses.push({
+              tiles: region,
+              minRow, maxRow, minCol, maxCol
+            });
+          }
+        }
+      }
+    }
+
+    function fireSlingshot() {
+      // Fire a black ball in the direction the player is facing
+      const speed = 10;
+      // Calculate hand position in front of player (where slingshot is drawn)
+      const handOffset = player.radius + 10; // matches hand/slingshot position
+      const handX = player.x + Math.cos(player.angle) * handOffset;
+      const handY = player.y + Math.sin(player.angle) * handOffset;
+      projectiles.push({
+        x: handX,
+        y: handY,
+        angle: player.angle,
+        speed: speed,
+        radius: 7,
+        alive: true,
+        distanceTraveled: 0,
+        maxDistance: 6 * TILE_SIZE
+      });
+    }
+
+    function updateDamageAnimations() {
+      // Update and remove expired damage animations
+      damageAnimations = damageAnimations.filter(anim => {
+        anim.timer--;
+        return anim.timer > 0;
+      });
+    }
+
+    function drawDamageAnimation(anim) {
+      ctx.save();
+      if (anim.type === 'axeRect') {
+        // Draw red rectangle
+        ctx.globalAlpha = anim.timer / anim.maxTimer * 0.5;
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(anim.corners[0].x - camera.x, anim.corners[0].y - camera.y);
+        for (let i = 1; i < 4; i++) {
+          ctx.lineTo(anim.corners[i].x - camera.x, anim.corners[i].y - camera.y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.globalAlpha = 1.0;
+        ctx.restore();
+        return;
+      }
+      // ... existing code for arc/old damage animation ...
+      // ... existing code ...
+    }
+
+    function updateProjectiles() {
+      for (const proj of projectiles) {
+        if (!proj.alive) continue;
+        const dx = Math.cos(proj.angle) * proj.speed;
+        const dy = Math.sin(proj.angle) * proj.speed;
+        proj.x += dx;
+        proj.y += dy;
+        proj.distanceTraveled += Math.sqrt(dx * dx + dy * dy);
+        if (proj.distanceTraveled >= proj.maxDistance) {
+          proj.alive = false;
+          continue;
+        }
+        // Only fromEnemy projectiles can hurt the player
+        if (proj.fromEnemy && isCircleOverlap(proj.x, proj.y, proj.radius, player.x, player.y, player.radius)) {
+          proj.alive = false;
+          if (player.invulnerabilityTime <= 0) {
+            player.health--;
+            player.invulnerabilityTime = 120;
+          }
+          continue;
+        }
+        // Only player projectiles can hurt enemies
+        if (!proj.fromEnemy) {
+          for (let i = 0; i < enemies.length; i++) {
+            const enemy = enemies[i];
+            if (isCircleOverlap(proj.x, proj.y, proj.radius, enemy.x, enemy.y, enemy.radius)) {
+              proj.alive = false;
+              enemy.health--;
+              break;
+            }
+          }
+        }
+        // Custom collision for projectiles: ignore water
+        const col = Math.floor(proj.x / TILE_SIZE);
+        const row = Math.floor(proj.y / TILE_SIZE);
+        let hitBarrier = false;
+        if (row < 0 || row >= worldData.length || col < 0 || col >= worldData[0].length) {
+          hitBarrier = true;
+        } else {
+          const cell = worldData[row][col];
+          // Only treat as collision if wall, boulder, bush, or tree (not water)
+          if (cell.base === 'X' || cell.item === 'B' || cell.item === 'O' || cell.item === 'T') {
+            hitBarrier = true;
+          }
+        }
+        if (hitBarrier) {
+          proj.alive = false;
+          continue;
+        }
+        // Remove if out of bounds
+        if (
+          proj.x < 0 || proj.x > MAP_COLS * TILE_SIZE ||
+          proj.y < 0 || proj.y > MAP_ROWS * TILE_SIZE
+        ) {
+          proj.alive = false;
+          continue;
+        }
+      }
+      // Remove dead projectiles
+      projectiles = projectiles.filter(p => p.alive);
+    }
+
+    function drawRock(x, y) {
+      ctx.save();
+      if (rockImg.complete) {
+        ctx.drawImage(rockImg, x - 16, y - 16, 32, 32);
+      } else {
+        ctx.fillStyle = '#888';
+        ctx.beginPath();
+        ctx.arc(x, y, 14, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function drawRockCountUI() {
+      const iconX = 20;
+      const iconY = 60;
+      ctx.save();
+      // Draw rock icon
+      if (rockImg.complete) {
+        ctx.drawImage(rockImg, iconX, iconY, 32, 32);
+      } else {
+        ctx.fillStyle = '#888';
+        ctx.beginPath();
+        ctx.arc(iconX + 16, iconY + 16, 14, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // Draw count
+      ctx.font = '24px Arial';
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 3;
+      ctx.strokeText('x' + (player.inventory[0].count || 0), iconX + 40, iconY + 28);
+      ctx.fillText('x' + (player.inventory[0].count || 0), iconX + 40, iconY + 28);
+      ctx.restore();
+      // Draw wood icon and count below rock
+      const woodIconY = iconY + 40;
+      ctx.save();
+      if (woodImg.complete) {
+        ctx.drawImage(woodImg, iconX, woodIconY, 32, 32);
+      } else {
+        ctx.fillStyle = '#b8860b';
+        ctx.beginPath();
+        ctx.arc(iconX + 16, woodIconY + 16, 14, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.font = '24px Arial';
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#222';
+      ctx.lineWidth = 3;
+      ctx.strokeText('x' + (player.inventory[1].count || 0), iconX + 40, woodIconY + 28);
+      ctx.fillText('x' + (player.inventory[1].count || 0), iconX + 40, woodIconY + 28);
+      ctx.restore();
+    }
+
+    function drawWood(x, y) {
+      ctx.save();
+      if (woodImg.complete) {
+        ctx.drawImage(woodImg, x - 16, y - 16, 32, 32);
+      } else {
+        ctx.fillStyle = '#b8860b';
+        ctx.beginPath();
+        ctx.arc(x, y, 14, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Fullscreen button logic
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    fullscreenBtn.addEventListener('click', () => {
+      const elem = canvas;
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        if (elem.requestFullscreen) {
+          elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) { /* Safari */
+          elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) { /* IE11 */
+          elem.msRequestFullscreen();
+        }
+      }
+    });
+
+    function spawnWood(x, y) {
+      // 3 directions: up-left, up-right, down
+      const angles = [-Math.PI/3, -2*Math.PI/3, Math.PI/2];
+      for (let i = 0; i < 3; i++) {
+        const angle = angles[i];
+        const speed = 7 + Math.random()*2;
+        woods.push({
+          x: x,
+          y: y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          t: 0,
+          collected: false
+        });
+      }
+    }
+
+    // Inventory UI rendering
+    function renderInventoryUI() {
+      const grid = document.getElementById('inventoryGrid');
+      grid.innerHTML = '';
+      for (let i = 0; i < 9; i++) {
+        const slot = player.inventory[i];
+        const div = document.createElement('div');
+        div.className = 'inventory-slot';
+        div.style.width = '60px';
+        div.style.height = '60px';
+        div.style.background = '#333';
+        div.style.border = '2px solid #666';
+        div.style.borderRadius = '8px';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.justifyContent = 'center';
+        div.style.position = 'relative';
+        // Only show icon if count > 0
+        if (slot.type && slot.count > 0) {
+          let icon = '';
+          if (slot.type === 'rock') icon = '🪨';
+          else if (slot.type === 'wood') icon = '🪵';
+          else if (slot.type === 'sword') icon = '🗡️';
+          else if (slot.type === 'slingshot') icon = '🏹';
+          else if (slot.type === 'axe') icon = '🪓';
+          else icon = slot.type;
+          div.innerHTML = `<span style="font-size: 32px;">${icon}</span>`;
+          if (slot.count > 1) {
+            const countDiv = document.createElement('div');
+            countDiv.textContent = slot.count;
+            countDiv.style.position = 'absolute';
+            countDiv.style.right = '6px';
+            countDiv.style.bottom = '2px';
+            countDiv.style.color = '#fff';
+            countDiv.style.fontSize = '18px';
+            countDiv.style.textShadow = '1px 1px 2px #000';
+            div.appendChild(countDiv);
+          }
+        }
+        grid.appendChild(div);
+      }
+      // Crafting slots (just clear for now)
+      for (let i = 0; i < 4; i++) {
+        const slot = player.crafting[i];
+        const div = document.getElementById('craftingSlot' + i);
+        div.innerHTML = '';
+        if (slot.type && slot.count > 0) {
+          let icon = '';
+          if (slot.type === 'rock') icon = '🪨';
+          else if (slot.type === 'wood') icon = '🪵';
+          else if (slot.type === 'sword') icon = '🗡️';
+          else if (slot.type === 'slingshot') icon = '🏹';
+          else if (slot.type === 'axe') icon = '🪓';
+          else icon = slot.type;
+          div.innerHTML = `<span style="font-size: 28px;">${icon}</span>`;
+          if (slot.count > 1) {
+            const countDiv = document.createElement('div');
+            countDiv.textContent = slot.count;
+            countDiv.style.position = 'absolute';
+            countDiv.style.right = '2px';
+            countDiv.style.bottom = '2px';
+            countDiv.style.color = '#fff';
+            countDiv.style.fontSize = '14px';
+            countDiv.style.textShadow = '1px 1px 2px #000';
+            div.appendChild(countDiv);
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html> 
