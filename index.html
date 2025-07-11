@@ -36,6 +36,7 @@
       <br><br>
       <button onclick="importWorld()" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer;">Generate World</button>
       <button onclick="loadDefaultWorld()" style="background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-left: 10px;">Load Default World</button>
+      <button onclick="startSurvivalMode()" style="background: #FF5722; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-left: 10px;">Survival Mode</button>
     </div>
     
     <button id="fullscreenBtn" style="position: absolute; top: 20px; right: 20px; z-index: 1001; background: #222; color: #fff; border: 2px solid #fff; border-radius: 8px; padding: 10px 20px; font-size: 16px; cursor: pointer;">Fullscreen</button>
@@ -47,7 +48,7 @@
       <div style="position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #222; border: 4px solid #888; border-radius: 16px; padding: 32px 40px; box-shadow: 0 0 40px #000; min-width: 420px; display: flex; flex-direction: row; align-items: flex-start; gap: 32px;">
         <div style="flex: 1;">
           <h2 style="color: #fff; text-align: center; margin-bottom: 18px;">Inventory</h2>
-          <div id="inventoryGrid" style="display: grid; grid-template-columns: repeat(3, 60px); grid-gap: 12px; margin-bottom: 24px;">
+          <div id="inventoryGrid" style="display: grid; grid-template-columns: repeat(3, 60px); grid-gap: 12px; margin-bottom: 24px; align-items: center;">
             <!-- 9 inventory slots will be filled by JS -->
           </div>
           <div style="text-align: center; margin-top: 18px;">
@@ -138,35 +139,47 @@
       hasSword: false, // sword pickup status
       hasSlingshot: false, // slingshot pickup status
       hasAxe: false, // axe pickup status
-      currentWeapon: 'sword', // 'sword', 'slingshot', or 'axe'
+      currentWeapon: 'none', // 'sword', 'slingshot', 'axe', or 'none'
       swordAnimation: 0, // sword swing animation (0 = not swinging)
       swordCooldown: 0, // cooldown between sword swings
       slingshotCooldown: 0, // cooldown between slingshot shots
       axeAnimation: 0, // axe swing animation (0 = not swinging)
       axeCooldown: 0, // cooldown between axe swings
+      punchAnimation: 0, // punch animation (0 = not punching)
+      punchCooldown: 0, // cooldown between punches
+      lastPunchHand: 'right', // track which hand was used last for alternating
       health: 3, // player health (3 hearts)
       maxHealth: 3, // player max health
       invulnerabilityTime: 0, // invulnerability after being hit
-      // Inventory: 9 slots (0-5: resources, 6-8: usable), 4 crafting slots
+      // Minecraft-style inventory: 6 main slots + 3 hotbar slots + 4 crafting slots
       inventory: [
-        { type: 'rock', count: 0 },    // 0
-        { type: 'wood', count: 0 },    // 1
+        { type: null, count: 0 },      // 0 - Main inventory
+        { type: null, count: 0 },      // 1
         { type: null, count: 0 },      // 2
         { type: null, count: 0 },      // 3
         { type: null, count: 0 },      // 4
         { type: null, count: 0 },      // 5
-        { type: 'sword', count: 0 },   // 6
-        { type: 'slingshot', count: 0 },// 7
-        { type: 'axe', count: 0 }      // 8
+        { type: null, count: 0 },      // 6 - Hotbar slot 1
+        { type: null, count: 0 },      // 7 - Hotbar slot 2
+        { type: null, count: 0 }       // 8 - Hotbar slot 3
       ],
       crafting: [
         { type: null, count: 0 },
         { type: null, count: 0 },
         { type: null, count: 0 },
         { type: null, count: 0 }
-      ]
+      ],
+      selectedHotbarSlot: 0 // 0, 1, or 2 (corresponds to slots 6, 7, 8)
     };
     let inventoryOpen = false;
+    let mouseHeldItem = null; // { type, count }
+    let craftingMenuOpen = false;
+    let craftingMenuGrid = []; // 3x3 crafting grid for the crafting menu
+    
+    // Initialize crafting menu grid (3x3)
+    for (let i = 0; i < 9; i++) {
+      craftingMenuGrid[i] = { type: null, count: 0 };
+    }
 
     // Enemy settings
     let enemies = [];
@@ -221,29 +234,50 @@
     const keys = {};
     window.addEventListener('keydown', e => {
       keys[e.key] = true;
-      // Weapon switch
+      // Debug spacebar
+      if (e.key === ' ') {
+        console.log('Spacebar pressed! Current weapon:', player.currentWeapon);
+        console.log('Keys object after spacebar:', keys);
+        console.log('keys[" "] value:', keys[' ']);
+      }
+      // Hotbar cycle (B key cycles through hotbar slots with items 1→2→3→1)
       if (e.key === 'b' || e.key === 'B') {
-        if (player.hasSword && player.hasSlingshot && player.hasAxe) {
-          // Cycle through all three weapons
-          if (player.currentWeapon === 'sword') player.currentWeapon = 'slingshot';
-          else if (player.currentWeapon === 'slingshot') player.currentWeapon = 'axe';
-          else player.currentWeapon = 'sword';
-        } else if (player.hasSword && player.hasSlingshot) {
-          player.currentWeapon = player.currentWeapon === 'sword' ? 'slingshot' : 'sword';
-        } else if (player.hasSword && player.hasAxe) {
-          player.currentWeapon = player.currentWeapon === 'sword' ? 'axe' : 'sword';
-        } else if (player.hasSlingshot && player.hasAxe) {
-          player.currentWeapon = player.currentWeapon === 'slingshot' ? 'axe' : 'slingshot';
-        } else if (player.hasSlingshot) {
-          player.currentWeapon = 'slingshot';
-        } else if (player.hasSword) {
-          player.currentWeapon = 'sword';
-        } else if (player.hasAxe) {
-          player.currentWeapon = 'axe';
+        // Find next slot with an item
+        let nextSlot = (player.selectedHotbarSlot + 1) % 3;
+        let attempts = 0;
+        
+        // Keep looking until we find a slot with an item or we've checked all slots
+        while (attempts < 3) {
+          const slotItem = player.inventory[6 + nextSlot];
+          if (slotItem && slotItem.type && slotItem.count > 0) {
+            // Found a slot with an item, select it
+            player.selectedHotbarSlot = nextSlot;
+            updateCurrentWeaponFromHotbar();
+            break;
+          }
+          nextSlot = (nextSlot + 1) % 3;
+          attempts++;
+        }
+        
+        // If no items found in any slot, stay on current slot but clear weapon
+        if (attempts >= 3) {
+          // All slots are empty, clear current weapon
+          player.currentWeapon = 'none';
         }
       }
+      // Hotbar selection (1, 2, 3 keys)
+      if (e.key === '1') {
+        player.selectedHotbarSlot = 0;
+        updateCurrentWeaponFromHotbar();
+      } else if (e.key === '2') {
+        player.selectedHotbarSlot = 1;
+        updateCurrentWeaponFromHotbar();
+      } else if (e.key === '3') {
+        player.selectedHotbarSlot = 2;
+        updateCurrentWeaponFromHotbar();
+      }
       // Inventory open/close
-      if ((e.key === 'e' || e.key === 'E') && !inventoryOpen) {
+      if ((e.key === 'e' || e.key === 'E') && !inventoryOpen && !craftingMenuOpen) {
         inventoryOpen = true;
         document.getElementById('inventoryOverlay').style.display = 'flex';
         renderInventoryUI();
@@ -251,8 +285,29 @@
         inventoryOpen = false;
         document.getElementById('inventoryOverlay').style.display = 'none';
       }
+      
+      // Crafting menu open/close
+      if ((e.key === ' ' || e.key === 'Escape') && craftingMenuOpen) {
+        craftingMenuOpen = false;
+        document.getElementById('craftingMenuOverlay').style.display = 'none';
+        // Return items from crafting menu to inventory
+        returnCraftingMenuItems();
+      }
+      
+      // Chess menu open/close
+      if ((e.key === ' ' || e.key === 'Escape') && chessMenuOpen) {
+        chessMenuOpen = false;
+        openChessPosition = null; // Clear open chess position
+        document.getElementById('chessMenuOverlay').style.display = 'none';
+      }
     });
-    window.addEventListener('keyup', e => keys[e.key] = false);
+    window.addEventListener('keyup', e => {
+      keys[e.key] = false;
+      // Debug spacebar release
+      if (e.key === ' ') {
+        console.log('Spacebar released! keys[" "] value:', keys[' ']);
+      }
+    });
 
     let hearts = [];
     let houses = [];
@@ -265,6 +320,17 @@
     let treeHealth = new Map(); // Maps "row,col" to health value
     let treeCooldown = new Map(); // Maps "row,col" to cooldown frames
     let woods = [];
+    
+    // Crafting table health tracking
+    let craftingTableHealth = new Map(); // Maps "row,col" to health value
+let chessHealth = new Map(); // Maps "row,col" to health value
+let chessCooldown = new Map(); // Maps "row,col" to cooldown frames
+let chessItems = []; // Array to track dropped chess items
+let chessStorage = new Map(); // Maps "row,col" to storage array
+let chessMenuOpen = false; // Track if chess menu is open
+let openChessPosition = null; // Track which chess piece is currently open {row, col}
+let craftingTableCooldown = new Map(); // Maps "row,col" to cooldown frames
+let craftingTables = []; // Array to track dropped crafting table items
 
     function getTileType(x, y) {
       const col = Math.floor(x / TILE_SIZE);
@@ -290,8 +356,8 @@
       }
       
       const cell = worldData[row][col];
-      // X (brick walls), W (water), B (bushes as item), O (boulders as item), and T (trees as item) cause collision, everything else is walkable
-      return cell.base === 'X' || cell.base === 'W' || cell.item === 'B' || cell.item === 'O' || cell.item === 'T';
+      // X (brick walls), W (water), B (bushes as item), O (boulders as item), T (trees as item), C (crafting tables as item), and H (chess as item) cause collision, everything else is walkable
+      return cell.base === 'X' || cell.base === 'W' || cell.item === 'B' || cell.item === 'O' || cell.item === 'T' || cell.item === 'C' || cell.item === 'H';
     }
 
     function isCircleOverlap(x1, y1, r1, x2, y2, r2) {
@@ -366,6 +432,232 @@
       treeCooldown.set(key, 60);
     }
 
+    // Bush health management functions
+    const bushHealth = new Map();
+    const bushCooldown = new Map();
+    
+    function getBushHealth(row, col) {
+      const key = `${row},${col}`;
+      return bushHealth.get(key) || 1; // Default to 1 health
+    }
+
+    function setBushHealth(row, col, health) {
+      const key = `${row},${col}`;
+      if (health <= 0) {
+        bushHealth.delete(key);
+        // Remove bush from world
+        worldData[row][col].item = null;
+        // Spawn drops
+        // 10% chance to drop a heart
+        if (Math.random() < 0.1) {
+          hearts.push({
+            x: col * TILE_SIZE + TILE_SIZE / 2,
+            y: row * TILE_SIZE + TILE_SIZE / 2,
+            baseX: col * TILE_SIZE + TILE_SIZE / 2,
+            baseY: row * TILE_SIZE + TILE_SIZE / 2,
+            vy: -6 - Math.random() * 2,
+            t: 0,
+            collected: false
+          });
+        }
+        // 40% chance to drop a rock
+        if (Math.random() < 0.4) {
+          rocks.push({
+            x: col * TILE_SIZE + TILE_SIZE / 2,
+            y: row * TILE_SIZE + TILE_SIZE / 2,
+            baseX: col * TILE_SIZE + TILE_SIZE / 2,
+            baseY: row * TILE_SIZE + TILE_SIZE / 2,
+            vy: -5 - Math.random() * 2,
+            t: 0,
+            collected: false
+          });
+        }
+      } else {
+        bushHealth.set(key, health);
+      }
+    }
+
+    function damageBush(row, col, damage = 0.25) {
+      const key = `${row},${col}`;
+      // If on cooldown, do nothing
+      if (bushCooldown.get(key) > 0) return;
+      const currentHealth = getBushHealth(row, col);
+      setBushHealth(row, col, currentHealth - damage);
+      // Set cooldown to 30 frames (0.5 seconds)
+      bushCooldown.set(key, 30);
+    }
+
+    // Crafting table health management functions
+    function getCraftingTableHealth(row, col) {
+      const key = `${row},${col}`;
+      return craftingTableHealth.get(key) || 2; // Default to 2 health
+    }
+
+    function setCraftingTableHealth(row, col, health) {
+      const key = `${row},${col}`;
+      if (health <= 0) {
+        craftingTableHealth.delete(key);
+        // Remove crafting table from world
+        worldData[row][col].item = null;
+        // Spawn crafting table item
+        spawnCraftingTable(col * TILE_SIZE + TILE_SIZE / 2, row * TILE_SIZE + TILE_SIZE / 2);
+      } else {
+        craftingTableHealth.set(key, health);
+      }
+    }
+
+    function damageCraftingTable(row, col, damage = 1) {
+      const key = `${row},${col}`;
+      // If on cooldown, do nothing
+      if (craftingTableCooldown.get(key) > 0) return;
+      const currentHealth = getCraftingTableHealth(row, col);
+      setCraftingTableHealth(row, col, currentHealth - damage);
+      // Set cooldown to 30 frames (0.5 seconds)
+      craftingTableCooldown.set(key, 30);
+    }
+
+    // Chess health management functions
+    function getChessHealth(row, col) {
+      const key = `${row},${col}`;
+      return chessHealth.get(key) || 2; // Default to 2 health
+    }
+
+    function setChessHealth(row, col, health) {
+      const key = `${row},${col}`;
+      if (health <= 0) {
+        chessHealth.delete(key);
+        
+        // Get stored items before deleting storage
+        const storage = chessStorage.get(key) || [];
+        
+        // Spawn all stored items around the chess location
+        const centerX = col * TILE_SIZE + TILE_SIZE / 2;
+        const centerY = row * TILE_SIZE + TILE_SIZE / 2;
+        
+        for (let i = 0; i < storage.length; i++) {
+          const slot = storage[i];
+          if (slot.type && slot.count > 0) {
+            // Spawn multiple items if count > 1
+            for (let j = 0; j < slot.count; j++) {
+              // Random position within a radius around the chess
+              const angle = Math.random() * Math.PI * 2;
+              const distance = 20 + Math.random() * 40; // 20-60 pixels from center
+              const spawnX = centerX + Math.cos(angle) * distance;
+              const spawnY = centerY + Math.sin(angle) * distance;
+              
+              // Spawn the appropriate item type
+              if (slot.type === 'rock') {
+                rocks.push({
+                  x: spawnX,
+                  y: spawnY,
+                  baseX: spawnX,
+                  baseY: spawnY,
+                  vy: -5 - Math.random() * 2,
+                  t: 0,
+                  collected: false
+                });
+              } else if (slot.type === 'wood') {
+                woods.push({
+                  x: spawnX,
+                  y: spawnY,
+                  vx: (Math.random() - 0.5) * 4,
+                  vy: -8,
+                  t: 0,
+                  collected: false
+                });
+              } else if (slot.type === 'sword') {
+                // Add sword to world at this position
+                const spawnCol = Math.floor(spawnX / TILE_SIZE);
+                const spawnRow = Math.floor(spawnY / TILE_SIZE);
+                if (spawnRow >= 0 && spawnRow < worldData.length && 
+                    spawnCol >= 0 && spawnCol < worldData[0].length) {
+                  worldData[spawnRow][spawnCol].item = 'W';
+                }
+              } else if (slot.type === 'slingshot') {
+                // Add slingshot to world at this position
+                const spawnCol = Math.floor(spawnX / TILE_SIZE);
+                const spawnRow = Math.floor(spawnY / TILE_SIZE);
+                if (spawnRow >= 0 && spawnRow < worldData.length && 
+                    spawnCol >= 0 && spawnCol < worldData[0].length) {
+                  worldData[spawnRow][spawnCol].item = 'L';
+                }
+              } else if (slot.type === 'axe') {
+                // Add axe to world at this position
+                const spawnCol = Math.floor(spawnX / TILE_SIZE);
+                const spawnRow = Math.floor(spawnY / TILE_SIZE);
+                if (spawnRow >= 0 && spawnRow < worldData.length && 
+                    spawnCol >= 0 && spawnCol < worldData[0].length) {
+                  worldData[spawnRow][spawnCol].item = 'A';
+                }
+              } else if (slot.type === 'craftingTable') {
+                craftingTables.push({
+                  x: spawnX,
+                  y: spawnY,
+                  baseY: spawnY,
+                  vx: (Math.random() - 0.5) * 4,
+                  vy: -8,
+                  t: 0,
+                  collected: false
+                });
+              } else if (slot.type === 'chess') {
+                chessItems.push({
+                  x: spawnX,
+                  y: spawnY,
+                  baseY: spawnY,
+                  vx: (Math.random() - 0.5) * 4,
+                  vy: -8,
+                  t: 0,
+                  collected: false
+                });
+              }
+            }
+          }
+        }
+        
+        chessStorage.delete(key); // Clean up storage after spawning items
+        // Remove chess from world
+        worldData[row][col].item = null;
+        // Spawn chess item
+        spawnChess(col * TILE_SIZE + TILE_SIZE / 2, row * TILE_SIZE + TILE_SIZE / 2);
+      } else {
+        chessHealth.set(key, health);
+      }
+    }
+
+    function damageChess(row, col, damage = 1) {
+      const key = `${row},${col}`;
+      // If on cooldown, do nothing
+      if (chessCooldown.get(key) > 0) return;
+      const currentHealth = getChessHealth(row, col);
+      setChessHealth(row, col, currentHealth - damage);
+      // Set cooldown to 30 frames (0.5 seconds)
+      chessCooldown.set(key, 30);
+    }
+
+    function spawnChess(x, y) {
+      chessItems.push({
+        x: x,
+        y: y,
+        baseY: y,
+        vx: (Math.random() - 0.5) * 4,
+        vy: -8,
+        t: 0,
+        collected: false
+      });
+    }
+
+    function spawnCraftingTable(x, y) {
+      craftingTables.push({
+        x: x,
+        y: y,
+        baseY: y,
+        vx: (Math.random() - 0.5) * 4,
+        vy: -8,
+        t: 0,
+        collected: false
+      });
+    }
+
     function update() {
       if (gameOver) return;
       // Update tree cooldowns
@@ -374,6 +666,33 @@
           treeCooldown.set(key, cooldown - 1);
         } else {
           treeCooldown.delete(key);
+        }
+      }
+      
+      // Update chess cooldowns
+      for (const [key, cooldown] of chessCooldown.entries()) {
+        if (cooldown > 0) {
+          chessCooldown.set(key, cooldown - 1);
+        } else {
+          chessCooldown.delete(key);
+        }
+      }
+      
+      // Update crafting table cooldowns
+      for (const [key, cooldown] of craftingTableCooldown.entries()) {
+        if (cooldown > 0) {
+          craftingTableCooldown.set(key, cooldown - 1);
+        } else {
+          craftingTableCooldown.delete(key);
+        }
+      }
+      
+      // Update bush cooldowns
+      for (const [key, cooldown] of bushCooldown.entries()) {
+        if (cooldown > 0) {
+          bushCooldown.set(key, cooldown - 1);
+        } else {
+          bushCooldown.delete(key);
         }
       }
       // Adjust player speed if at 0 hearts
@@ -460,7 +779,7 @@
       
       // Handle weapon actions
       if (player.currentWeapon === 'sword') {
-      if (keys[' '] && player.hasSword && player.swordCooldown <= 0) {
+      if (keys[' '] && hasItemInHotbar('sword') && player.swordCooldown <= 0) {
         player.swordAnimation = 1.0; // Start sword swing
         player.swordCooldown = 30; // 30 frames cooldown
         checkSwordHit();
@@ -474,18 +793,200 @@
         player.swordCooldown--;
         }
       } else if (player.currentWeapon === 'slingshot') {
-        if (keys[' '] && player.hasSlingshot && player.slingshotCooldown <= 0) {
-          if ((player.inventory[0].count || 0) > 0) {
+        // Simplified slingshot logic
+        if (keys[' '] && player.slingshotCooldown <= 0) {
+          console.log('=== SLINGSHOT FIRING ATTEMPT ===');
+          
+          // Check if slingshot is in selected hotbar slot
+          const selectedSlot = 6 + player.selectedHotbarSlot;
+          const selectedItem = player.inventory[selectedSlot];
+          console.log('Selected slot:', selectedSlot, 'Item:', selectedItem);
+          
+          // Check if we have rocks anywhere in inventory
+          let hasRocks = false;
+          let rockSlot = -1;
+          for (let i = 0; i < player.inventory.length; i++) {
+            if (player.inventory[i].type === 'rock' && player.inventory[i].count > 0) {
+              hasRocks = true;
+              rockSlot = i;
+              break;
+            }
+          }
+          console.log('Has rocks:', hasRocks, 'Rock slot:', rockSlot);
+          
+          // Fire if we have slingshot in selected slot and rocks in hotbar
+          if (selectedItem && selectedItem.type === 'slingshot' && selectedItem.count > 0 && hasRocks) {
+            console.log('FIRING SLINGSHOT!');
             fireSlingshot();
-            player.slingshotCooldown = 20; // 20 frames cooldown
-            player.inventory[0].count--;
+            player.slingshotCooldown = 20;
+            
+            // Remove one rock from the rock slot
+            if (rockSlot !== -1) {
+              player.inventory[rockSlot].count--;
+              if (player.inventory[rockSlot].count <= 0) {
+                player.inventory[rockSlot].type = null;
+                player.inventory[rockSlot].count = 0;
+              }
+              console.log('Removed rock from slot', rockSlot);
+            }
+          } else {
+            console.log('Cannot fire slingshot:');
+            console.log('- Slingshot in selected slot:', selectedItem && selectedItem.type === 'slingshot');
+            console.log('- Has rocks:', hasRocks);
           }
         }
+        
+        // Update cooldown
+        if (player.slingshotCooldown > 0) {
+          player.slingshotCooldown--;
+        }
+      } else if (player.currentWeapon === 'craftingTable') {
+        // Crafting table placement logic
+        if (keys[' '] && player.slingshotCooldown <= 0) {
+          console.log('=== CRAFTING TABLE PLACEMENT ATTEMPT ===');
+          
+          // Check if crafting table is in selected hotbar slot
+          const selectedSlot = 6 + player.selectedHotbarSlot;
+          const selectedItem = player.inventory[selectedSlot];
+          console.log('Selected slot:', selectedSlot, 'Item:', selectedItem);
+          
+          // Place crafting table if we have one in selected slot
+          if (selectedItem && selectedItem.type === 'craftingTable' && selectedItem.count > 0) {
+            console.log('PLACING CRAFTING TABLE!');
+            
+            // Calculate position in front of player (next tile away)
+            const playerCol = Math.floor(player.x / TILE_SIZE);
+            const playerRow = Math.floor(player.y / TILE_SIZE);
+            
+            // Calculate the next tile in the direction the player is facing
+            const gridCol = playerCol + Math.round(Math.cos(player.angle));
+            const gridRow = playerRow + Math.round(Math.sin(player.angle));
+            
+            // Convert back to world coordinates for logging
+            const placeX = gridCol * TILE_SIZE + TILE_SIZE / 2;
+            const placeY = gridRow * TILE_SIZE + TILE_SIZE / 2;
+            
+            console.log('Placing at grid position:', gridCol, gridRow);
+            console.log('World position:', placeX, placeY);
+            
+            // Check if position is valid (within bounds and not already occupied)
+            if (gridRow >= 0 && gridRow < worldData.length && 
+                gridCol >= 0 && gridCol < worldData[0].length) {
+              
+              const cell = worldData[gridRow][gridCol];
+              if (!cell.item && cell.base !== 'X' && cell.base !== 'W') {
+                // Place the crafting table
+                cell.item = 'C'; // Use 'C' for crafting table
+                console.log('Crafting table placed successfully!');
+                
+                // Initialize crafting table health
+                const key = `${gridRow},${gridCol}`;
+                craftingTableHealth.set(key, 2);
+                
+                // Remove one crafting table from inventory
+                selectedItem.count--;
+                if (selectedItem.count <= 0) {
+                  selectedItem.type = null;
+                  selectedItem.count = 0;
+                }
+                
+                // Set cooldown
+                player.slingshotCooldown = 20;
+                
+                // Switch back to normal hands after 0.5 seconds (30 frames at 60fps)
+                setTimeout(() => {
+                  player.currentWeapon = 'none';
+                }, 500);
+              } else {
+                console.log('Cannot place crafting table - position occupied or invalid');
+              }
+            } else {
+              console.log('Cannot place crafting table - out of bounds');
+            }
+          } else {
+            console.log('No crafting table in selected slot:', selectedItem);
+          }
+        }
+        
+        // Update cooldown
+        if (player.slingshotCooldown > 0) {
+          player.slingshotCooldown--;
+        }
+      } else if (player.currentWeapon === 'chess') {
+        // Chess placement logic
+        if (keys[' '] && player.slingshotCooldown <= 0) {
+          console.log('=== CHESS PLACEMENT ATTEMPT ===');
+          
+          // Check if chess is in selected hotbar slot
+          const selectedSlot = 6 + player.selectedHotbarSlot;
+          const selectedItem = player.inventory[selectedSlot];
+          console.log('Selected slot:', selectedSlot, 'Item:', selectedItem);
+          
+          // Place chess if we have one in selected slot
+          if (selectedItem && selectedItem.type === 'chess' && selectedItem.count > 0) {
+            console.log('PLACING CHESS!');
+            
+            // Calculate position in front of player (next tile away)
+            const playerCol = Math.floor(player.x / TILE_SIZE);
+            const playerRow = Math.floor(player.y / TILE_SIZE);
+            
+            // Calculate the next tile in the direction the player is facing
+            const gridCol = playerCol + Math.round(Math.cos(player.angle));
+            const gridRow = playerRow + Math.round(Math.sin(player.angle));
+            
+            // Convert back to world coordinates for logging
+            const placeX = gridCol * TILE_SIZE + TILE_SIZE / 2;
+            const placeY = gridRow * TILE_SIZE + TILE_SIZE / 2;
+            
+            console.log('Placing at grid position:', gridCol, gridRow);
+            console.log('World position:', placeX, placeY);
+            
+            // Check if position is valid (within bounds and not already occupied)
+            if (gridRow >= 0 && gridRow < worldData.length && 
+                gridCol >= 0 && gridCol < worldData[0].length) {
+              
+              const cell = worldData[gridRow][gridCol];
+              if (!cell.item && cell.base !== 'X' && cell.base !== 'W') {
+                // Place the chess
+                cell.item = 'H'; // Use 'H' for chess (since 'C' is used for crafting table)
+                console.log('Chess placed successfully!');
+                
+                // Initialize chess health and storage
+                const key = `${gridRow},${gridCol}`;
+                chessHealth.set(key, 2);
+                chessStorage.set(key, Array(12).fill().map(() => ({ type: null, count: 0 })));
+                
+                // Remove one chess from inventory
+                selectedItem.count--;
+                if (selectedItem.count <= 0) {
+                  selectedItem.type = null;
+                  selectedItem.count = 0;
+                }
+                
+                // Set cooldown
+                player.slingshotCooldown = 20;
+                
+                // Switch back to normal hands after 0.5 seconds (30 frames at 60fps)
+                setTimeout(() => {
+                  player.currentWeapon = 'none';
+                }, 500);
+              } else {
+            console.log('Cannot place chess - position occupied or invalid');
+          }
+        } else {
+          console.log('Cannot place chess - out of bounds');
+        }
+      } else {
+        console.log('No chess in selected slot:', selectedItem);
+      }
+    }
+        
+        // Update cooldown
         if (player.slingshotCooldown > 0) {
           player.slingshotCooldown--;
         }
       } else if (player.currentWeapon === 'axe') {
-        if (keys[' '] && player.hasAxe && player.axeCooldown <= 0) {
+        if (keys[' '] && hasItemInHotbar('axe') && player.axeCooldown <= 0) {
           player.axeAnimation = 1.0; // Start axe swing
           player.axeCooldown = 30; // 30 frames cooldown
           checkAxeHit();
@@ -497,6 +998,56 @@
         }
         if (player.axeCooldown > 0) {
           player.axeCooldown--;
+        }
+      } else if (player.currentWeapon === 'none') {
+        // Handle punching when no weapon is held
+        if (keys[' '] && player.punchCooldown <= 0) {
+          player.punchAnimation = 1.0; // Start punch animation
+          player.punchCooldown = 35; // 35 frames cooldown (0.58 seconds)
+          // Alternate hands
+          player.lastPunchHand = player.lastPunchHand === 'right' ? 'left' : 'right';
+          checkPunchHit(); // Check if punch hits enemies
+        }
+        
+        // Update punch animation
+        if (player.punchAnimation > 0) {
+          player.punchAnimation -= 0.15;
+          if (player.punchAnimation < 0) player.punchAnimation = 0;
+        }
+        
+        // Update punch cooldown
+        if (player.punchCooldown > 0) {
+          player.punchCooldown--;
+        }
+        
+        // Check for crafting menu activation when no weapon is held (only if not punching)
+        if (keys[' '] && !craftingMenuOpen && !chessMenuOpen && !inventoryOpen && player.punchCooldown > 15) {
+          // Check if player is near a crafting table
+          const playerCol = Math.floor(player.x / TILE_SIZE);
+          const playerRow = Math.floor(player.y / TILE_SIZE);
+          
+          // Check adjacent tiles for crafting tables
+          const adjacentTiles = [
+            {row: playerRow - 1, col: playerCol}, // North
+            {row: playerRow + 1, col: playerCol}, // South
+            {row: playerRow, col: playerCol - 1}, // West
+            {row: playerRow, col: playerCol + 1}  // East
+          ];
+          
+          for (let tile of adjacentTiles) {
+            if (tile.row >= 0 && tile.row < worldData.length && 
+                tile.col >= 0 && tile.col < worldData[0].length) {
+              if (worldData[tile.row][tile.col].item === 'C') {
+                // Found a crafting table, open crafting menu
+                openCraftingMenu();
+                break;
+              } else if (worldData[tile.row][tile.col].item === 'H') {
+                // Found a chess piece, open chess menu
+                openChessMenu(tile.row, tile.col);
+                break;
+              }
+            }
+          }
         }
       }
       
@@ -543,8 +1094,17 @@
           const dx = player.x - rock.x;
           const dy = player.y - rock.y;
           if (Math.sqrt(dx * dx + dy * dy) < player.radius + 16) {
-            player.inventory[0].count = (player.inventory[0].count || 0) + 1; // rocks
-            rock.collected = true;
+            const slot = findInventorySlot('rock', true);
+            if (slot !== -1) {
+              if (player.inventory[slot].type === 'rock') {
+                player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, getMaxStackSize('rock'));
+              } else {
+                player.inventory[slot].type = 'rock';
+                player.inventory[slot].count = 1;
+              }
+              rock.collected = true; // Only collect if we found a slot
+            }
+            // If no slot found, leave rock on ground (don't mark as collected)
           }
         }
       }
@@ -603,13 +1163,128 @@
           const dx = player.x - wood.x;
           const dy = player.y - wood.y;
           if (Math.sqrt(dx * dx + dy * dy) < player.radius + 16) {
-            player.inventory[1].count = (player.inventory[1].count || 0) + 1; // wood
-            wood.collected = true;
+            const slot = findInventorySlot('wood', true);
+            if (slot !== -1) {
+              if (player.inventory[slot].type === 'wood') {
+                player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, getMaxStackSize('wood'));
+              } else {
+                player.inventory[slot].type = 'wood';
+                player.inventory[slot].count = 1;
+              }
+              wood.collected = true; // Only collect if we found a slot
+            }
+            // If no slot found, leave wood on ground (don't mark as collected)
           }
         }
       }
       // Remove collected woods
       woods = woods.filter(w => !w.collected);
+      
+      // Update crafting tables animation and check for pickup
+      for (let craftingTable of craftingTables) {
+        if (!craftingTable.collected) {
+          // Animate pop out: up, then fall, then bounce
+          craftingTable.t += 1;
+          if (craftingTable.t < 12) {
+            // Check collision before moving
+            const newX = craftingTable.x + craftingTable.vx;
+            const newY = craftingTable.y + craftingTable.vy + 0.3 * craftingTable.t;
+            if (!checkCollision(newX, newY)) {
+              craftingTable.x = newX;
+              craftingTable.y = newY;
+            } else {
+              // Stop movement when hitting barrier
+              craftingTable.vx = 0;
+              craftingTable.vy = 0;
+            }
+          } else {
+            // Settle on ground
+            craftingTable.vx *= 0.9;
+            craftingTable.vy *= 0.9;
+            const newX = craftingTable.x + craftingTable.vx;
+            const newY = craftingTable.y + craftingTable.vy;
+            if (!checkCollision(newX, newY)) {
+              craftingTable.x = newX;
+              craftingTable.y = newY;
+            } else {
+              // Stop movement when hitting barrier
+              craftingTable.vx = 0;
+              craftingTable.vy = 0;
+            }
+          }
+          // Check for player pickup
+          const dx = player.x - craftingTable.x;
+          const dy = player.y - craftingTable.y;
+          if (Math.sqrt(dx * dx + dy * dy) < player.radius + 16) {
+            const slot = findInventorySlot('craftingTable', false);
+            if (slot !== -1) {
+              if (player.inventory[slot].type === 'craftingTable') {
+                player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, getMaxStackSize('craftingTable'));
+              } else {
+                player.inventory[slot].type = 'craftingTable';
+                player.inventory[slot].count = 1;
+              }
+              craftingTable.collected = true; // Only collect if we found a slot
+            }
+            // If no slot found, leave crafting table on ground (don't mark as collected)
+          }
+        }
+      }
+      // Remove collected crafting tables
+      craftingTables = craftingTables.filter(ct => !ct.collected);
+
+      // Update chess items animation and check for pickup
+      for (let chessItem of chessItems) {
+        if (!chessItem.collected) {
+          // Animate pop out: up, then fall, then bounce
+          chessItem.t += 1;
+          if (chessItem.t < 12) {
+            // Check collision before moving
+            const newX = chessItem.x + chessItem.vx;
+            const newY = chessItem.y + chessItem.vy + 0.3 * chessItem.t;
+            if (!checkCollision(newX, newY)) {
+              chessItem.x = newX;
+              chessItem.y = newY;
+            } else {
+              // Stop movement when hitting barrier
+              chessItem.vx = 0;
+              chessItem.vy = 0;
+            }
+          } else {
+            // Settle on ground
+            chessItem.vx *= 0.9;
+            chessItem.vy *= 0.9;
+            const newX = chessItem.x + chessItem.vx;
+            const newY = chessItem.y + chessItem.vy;
+            if (!checkCollision(newX, newY)) {
+              chessItem.x = newX;
+              chessItem.y = newY;
+            } else {
+              // Stop movement when hitting barrier
+              chessItem.vx = 0;
+              chessItem.vy = 0;
+            }
+          }
+          // Check for player pickup
+          const dx = player.x - chessItem.x;
+          const dy = player.y - chessItem.y;
+          if (Math.sqrt(dx * dx + dy * dy) < player.radius + 16) {
+            const slot = findInventorySlot('chess', false);
+            if (slot !== -1) {
+              if (player.inventory[slot].type === 'chess') {
+                player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, getMaxStackSize('chess'));
+              } else {
+                player.inventory[slot].type = 'chess';
+                player.inventory[slot].count = 1;
+              }
+              chessItem.collected = true; // Only collect if we found a slot
+            }
+            // If no slot found, leave chess item on ground (don't mark as collected)
+          }
+        }
+      }
+      // Remove collected chess items
+      chessItems = chessItems.filter(ci => !ci.collected);
 
       // At the end of update, check for game over
       if (player.health < 0 && !gameOver) {
@@ -653,27 +1328,46 @@
       if (playerRow >= 0 && playerRow < worldData.length && 
           playerCol >= 0 && playerCol < worldData[0].length) {
         const cell = worldData[playerRow][playerCol];
-        if (cell.item === 'W' && !player.hasSword) {
-          player.hasSword = true;
-          player.inventory[6].count = 1;
+        if (cell.item === 'W') {
+          // Place sword in first empty slot
+          const slot = findInventorySlot('sword', false);
+          if (slot !== -1) {
+            player.hasSword = true;
+            player.inventory[slot].type = 'sword';
+            player.inventory[slot].count = 1;
+            // Set as current weapon if no weapon is selected
+            if (!player.currentWeapon || player.currentWeapon === 'none') {
+              player.currentWeapon = 'sword';
+          }
           cell.item = null;
+          }
         }
         // Check if player is on a slingshot tile
-        if (cell.item === 'L' && !player.hasSlingshot) {
-          player.hasSlingshot = true;
-          player.inventory[7].count = 1;
+        if (cell.item === 'L') {
+          const slot = findInventorySlot('slingshot', false);
+          if (slot !== -1) {
+            player.hasSlingshot = true;
+            player.inventory[slot].type = 'slingshot';
+            player.inventory[slot].count = 1;
+            // Set as current weapon if no weapon is selected
+            if (!player.currentWeapon || player.currentWeapon === 'none') {
+              player.currentWeapon = 'slingshot';
+          }
           cell.item = null;
-          if (!player.hasSword && !player.hasAxe) {
-            player.currentWeapon = 'slingshot';
           }
         }
         // Check if player is on an axe tile
-        if (cell.item === 'A' && !player.hasAxe) {
-          player.hasAxe = true;
-          player.inventory[8].count = 1;
+        if (cell.item === 'A') {
+          const slot = findInventorySlot('axe', false);
+          if (slot !== -1) {
+            player.hasAxe = true;
+            player.inventory[slot].type = 'axe';
+            player.inventory[slot].count = 1;
+            // Set as current weapon if no weapon is selected
+            if (!player.currentWeapon || player.currentWeapon === 'none') {
+              player.currentWeapon = 'axe';
+          }
           cell.item = null;
-          if (!player.hasSword && !player.hasSlingshot) {
-            player.currentWeapon = 'axe';
           }
         }
         // In checkSwordPickup, fix blue heart pickup logic
@@ -686,7 +1380,7 @@
     }
     
     function checkSwordHit() {
-      if (!player.hasSword) return;
+      if (!hasItemInHotbar('sword')) return;
       // Sword hit arc now starts slightly behind the player
       const swordLength = 30; // Length of the sword blade
       const swordRangeStart = player.radius - 10; // Start 10px behind player center
@@ -739,7 +1433,7 @@
     }
 
     function checkAxeHit() {
-      if (!player.hasAxe) return;
+      if (!hasItemInHotbar('axe')) return;
       // Rectangle hitbox parameters
       const rectLength = TILE_SIZE * 0.8; // Shorter reach - about 0.8 tiles long
       const rectWidth = TILE_SIZE * 0.5;
@@ -777,9 +1471,14 @@
           const localY = relX * perpX + relY * perpY;
           if (Math.abs(localX) <= rectLength / 2 && Math.abs(localY) <= rectWidth / 2) {
             // Place plank on water if player has enough wood
-            if (!plankPlaced && worldData[row][col].base === 'W' && player.inventory[1].count >= 4) {
+            let woodSlot = findInventorySlot('wood', true);
+            if (!plankPlaced && worldData[row][col].base === 'W' && woodSlot !== -1 && player.inventory[woodSlot].count >= 4) {
               worldData[row][col].base = 'O'; // Plank
-              player.inventory[1].count -= 4;
+              player.inventory[woodSlot].count -= 4;
+              if (player.inventory[woodSlot].count <= 0) {
+                player.inventory[woodSlot].type = null;
+                player.inventory[woodSlot].count = 0;
+              }
               plankPlaced = true;
             }
             if (worldData[row][col].item === 'T') {
@@ -791,6 +1490,12 @@
               if (col > 0 && worldData[row][col-1].item === 'T') {
                 damageTree(row, col-1, 1);
               }
+            }
+            if (worldData[row][col].item === 'C') {
+              damageCraftingTable(row, col, 1);
+            }
+            if (worldData[row][col].item === 'H') {
+              damageChess(row, col, 1);
             }
           }
         }
@@ -885,7 +1590,7 @@
       }
 
       // Draw hands
-      if (player.currentWeapon === 'slingshot' && player.hasSlingshot) {
+      if (player.currentWeapon === 'slingshot' && hasItemInHotbar('slingshot')) {
         // Draw both hands close to the slingshot, just before the slingshot image
         // Left hand (slightly above center)
         ctx.save();
@@ -907,7 +1612,7 @@
         ctx.shadowBlur = 5;
         ctx.fill();
         ctx.restore();
-      } else if (player.currentWeapon === 'axe' && player.hasAxe) {
+      } else if (player.currentWeapon === 'axe' && hasItemInHotbar('axe')) {
         // Draw left hand (rotated 45 degrees clockwise around the body)
         ctx.beginPath();
         ctx.arc(-player.radius * 0.707 - 8, player.radius * 0.707, 8, 0, Math.PI * 2);
@@ -922,6 +1627,50 @@
         ctx.shadowColor = '#000';
         ctx.shadowBlur = 5;
         ctx.fill();
+      } else if (player.currentWeapon === 'craftingTable' && hasItemInHotbar('craftingTable')) {
+        // Draw hands holding crafting table
+        // Left hand (closer to body, slightly apart)
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // align with crafting table direction
+        ctx.beginPath();
+        ctx.arc(player.radius + 2, -10, 7, 0, Math.PI * 2); // closer to body, slightly apart
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        ctx.restore();
+        // Right hand (closer to body, slightly apart)
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // align with crafting table direction
+        ctx.beginPath();
+        ctx.arc(player.radius + 2, 10, 7, 0, Math.PI * 2); // closer to body, slightly apart
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        ctx.restore();
+      } else if (player.currentWeapon === 'chess' && hasItemInHotbar('chess')) {
+        // Draw hands holding chess
+        // Left hand (closer to body, slightly apart)
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // align with chess direction
+        ctx.beginPath();
+        ctx.arc(player.radius + 2, -10, 7, 0, Math.PI * 2); // closer to body, slightly apart
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        ctx.restore();
+        // Right hand (closer to body, slightly apart)
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // align with chess direction
+        ctx.beginPath();
+        ctx.arc(player.radius + 2, 10, 7, 0, Math.PI * 2); // closer to body, slightly apart
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        ctx.restore();
       } else {
         // Default hand positions
       // Draw left hand
@@ -952,7 +1701,7 @@
       ctx.fill();
       
       // Draw weapon in hand
-      if (player.currentWeapon === 'sword' && player.hasSword) {
+      if (player.currentWeapon === 'sword' && hasItemInHotbar('sword')) {
         // Draw sword
         ctx.fillStyle = '#c0c0c0';
         ctx.lineWidth = 3;
@@ -976,7 +1725,7 @@
           ctx.fillStyle = '#e0e0e0';
           ctx.fillRect(player.radius + 20, -2, 30, 4);
         }
-      } else if (player.currentWeapon === 'slingshot' && player.hasSlingshot) {
+      } else if (player.currentWeapon === 'slingshot' && hasItemInHotbar('slingshot')) {
         // Draw slingshot closer to the body
         if (slingShotImg.complete) {
           ctx.save();
@@ -995,7 +1744,7 @@
           ctx.lineWidth = 2;
           ctx.stroke();
         }
-      } else if (player.currentWeapon === 'axe' && player.hasAxe) {
+      } else if (player.currentWeapon === 'axe' && hasItemInHotbar('axe')) {
         // Draw axe in hand with forward jump animation
         if (axeImg.complete) {
           ctx.save();
@@ -1034,6 +1783,89 @@
             ctx.fillRect(player.radius + 16, -14, 14, 28);
           }
         }
+      } else if (player.currentWeapon === 'craftingTable' && hasItemInHotbar('craftingTable')) {
+        // Draw crafting table in hand
+        const craftingTableImg = new Image();
+        craftingTableImg.src = 'craftingTable.png';
+        if (craftingTableImg.complete) {
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          ctx.drawImage(craftingTableImg, player.radius + 2, -20, 40, 40); // larger size for crafting table
+          ctx.restore();
+        } else {
+          // Fallback: draw a simple crafting table
+          ctx.fillStyle = '#8B4513';
+          ctx.fillRect(player.radius + 10, -15, 8, 30); // table legs
+          ctx.fillStyle = '#654321';
+          ctx.fillRect(player.radius + 18, -12, 20, 24); // table top
+        }
+      } else if (player.currentWeapon === 'chess' && hasItemInHotbar('chess')) {
+        // Draw chess in hand
+        const chessImg = new Image();
+        chessImg.src = 'chessClosed.png';
+        if (chessImg.complete) {
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          ctx.drawImage(chessImg, player.radius + 2, -20, 40, 40); // same size as crafting table
+          ctx.restore();
+        } else {
+          // Fallback: draw a simple chess piece
+          ctx.fillStyle = '#8B4513';
+          ctx.fillRect(player.radius + 10, -15, 8, 30); // base
+          ctx.fillStyle = '#654321';
+          ctx.fillRect(player.radius + 18, -12, 20, 24); // piece
+        }
+      }
+      
+      // Draw punch animation when no weapon is held
+      if (player.currentWeapon === 'none' && player.punchAnimation > 0) {
+        // Draw extended fist for punch animation
+        const punchProgress = 1 - player.punchAnimation;
+        const punchDistance = punchProgress * 20; // Extend 20 pixels forward
+        
+        // Draw extended fist - alternates between left and right hands
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        
+        // Determine hand position based on which hand is punching
+        const handX = player.lastPunchHand === 'right' ? player.radius + 8 : -player.radius - 8;
+        
+        ctx.beginPath();
+        ctx.arc(handX, punchDistance, 10, 0, Math.PI * 2); // Starts from current hand, extends forward
+        ctx.fill();
+        
+        // Draw punch impact effect
+        if (punchProgress > 0.5) {
+          ctx.globalAlpha = (1 - punchProgress) * 0.6;
+          ctx.fillStyle = '#ff6b6b';
+          ctx.beginPath();
+          ctx.arc(handX, punchDistance + 15, 8, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1.0;
+        }
+        
+        // Draw punch cloud poof effect
+        const poofDistance = player.radius + 20; // Distance in front of player
+        const poofRadius = player.radius * 1.33; // Size of the poof area
+        
+        // Draw multiple cloud particles for a poof effect
+        const numParticles = 8;
+        for (let i = 0; i < numParticles; i++) {
+          const angle = (i / numParticles) * Math.PI * 2;
+          const distance = poofRadius * (0.3 + Math.random() * 0.7); // Random distance within the area
+          const x = Math.cos(angle) * distance;
+          const y = Math.sin(angle) * distance + poofDistance;
+          
+          // Draw cloud particle
+          ctx.fillStyle = '#ffffff';
+          ctx.globalAlpha = (1 - punchProgress) * 0.4; // Fade out as animation progresses
+          ctx.beginPath();
+          ctx.arc(x, y, 3 + Math.random() * 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        
+        ctx.globalAlpha = 1.0;
       }
       
       ctx.restore();
@@ -1116,6 +1948,19 @@
               ctx.fillStyle = '#654321';
               ctx.fillRect(tileX + TILE_SIZE/3, tileY + TILE_SIZE/2, TILE_SIZE/6, TILE_SIZE/3);
             }
+          } else if (cell.item === 'C') {
+            // Draw crafting table
+            const craftingTableImg = new Image();
+            craftingTableImg.src = 'craftingTable.png';
+            if (craftingTableImg.complete) {
+              ctx.drawImage(craftingTableImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            } else {
+              // Fallback: draw a simple crafting table
+              ctx.fillStyle = '#8B4513';
+              ctx.fillRect(tileX + TILE_SIZE/4, tileY + TILE_SIZE/2, TILE_SIZE/2, TILE_SIZE/3); // table legs
+              ctx.fillStyle = '#654321';
+              ctx.fillRect(tileX + TILE_SIZE/6, tileY + TILE_SIZE/4, TILE_SIZE * 2/3, TILE_SIZE/2); // table top
+            }
           } else if (cell.item === 'E' || cell.item === 'Z') {
             // Draw enemy (red or blue)
             ctx.save();
@@ -1153,12 +1998,18 @@
             }
           }
           if (cell.item === 'H') {
-            if (blueHeartImg.complete) ctx.drawImage(blueHeartImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
-            else {
-              ctx.fillStyle = '#3498db';
-              ctx.beginPath();
-              ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
-              ctx.fill();
+            // Draw chess - show opened image if this chess is currently open
+            const isOpen = openChessPosition && openChessPosition.row === row && openChessPosition.col === col;
+            const chessImg = new Image();
+            chessImg.src = isOpen ? 'chessOpened.png' : 'chessClosed.png';
+            if (chessImg.complete) {
+              ctx.drawImage(chessImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            } else {
+              // Fallback: draw a simple chess piece
+              ctx.fillStyle = '#8B4513';
+              ctx.fillRect(tileX + TILE_SIZE/4, tileY + TILE_SIZE/2, TILE_SIZE/2, TILE_SIZE/3); // base
+              ctx.fillStyle = '#654321';
+              ctx.fillRect(tileX + TILE_SIZE/3, tileY + TILE_SIZE/4, TILE_SIZE/3, TILE_SIZE/2); // piece
             }
           } else if (cell.item === 'O') {
             // Draw boulder
@@ -1286,6 +2137,23 @@
           drawWood(wood.x - camera.x, wood.y - camera.y);
         }
       }
+      
+      // Draw crafting tables on ground on top of all tiles/items
+      for (let craftingTable of craftingTables) {
+        if (!craftingTable.collected) {
+          drawCraftingTable(craftingTable.x - camera.x, craftingTable.y - camera.y);
+        }
+      }
+      
+      // Draw chess items on ground on top of all tiles/items
+      for (let chessItem of chessItems) {
+        if (!chessItem.collected) {
+          drawChess(chessItem.x - camera.x, chessItem.y - camera.y);
+        }
+      }
+      
+      // Draw hotbar (always visible)
+      drawHotbar();
     }
 
     function gameLoop() {
@@ -1397,6 +2265,420 @@
       
       // Start game
       gameLoop();
+    }
+    
+    function startSurvivalMode() {
+      // Generate random survival world
+      generateSurvivalWorld();
+      
+      // Reset player state
+      player.x = startPosition.x * TILE_SIZE;
+      player.y = startPosition.y * TILE_SIZE;
+      player.health = 3;
+      player.maxHealth = 3;
+      player.currentWeapon = 'none';
+      player.inventory = [
+        { type: null, count: 0 }, { type: null, count: 0 }, { type: null, count: 0 },
+        { type: null, count: 0 }, { type: null, count: 0 }, { type: null, count: 0 },
+        { type: null, count: 0 }, { type: null, count: 0 }, { type: null, count: 0 }
+      ];
+      player.selectedHotbarSlot = 0;
+      
+      // Initialize enemies and tree health
+      initializeEnemies();
+      initializeTreeHealth();
+      
+      // Hide import section
+      document.getElementById('importSection').style.display = 'none';
+      
+      detectHouses();
+      
+      // Start game
+      gameLoop();
+    }
+    
+    function generateSurvivalWorld() {
+      // Set survival world size
+      MAP_ROWS = 1000;
+      MAP_COLS = 1000;
+      
+      // Initialize world data
+      worldData = [];
+      
+      // Generate base terrain with clustered water/land and dirt patches
+      for (let row = 0; row < MAP_ROWS; row++) {
+        const rowData = [];
+        for (let col = 0; col < MAP_COLS; col++) {
+          rowData.push({ base: '.', item: null });
+        }
+        worldData.push(rowData);
+      }
+      
+      // Biome system - 200x200 blocks alternating between pasture and forest
+      const BIOME_SIZE = 200;
+      const iterations = 4;
+      
+      // Generate terrain based on biome
+      for (let row = 0; row < MAP_ROWS; row++) {
+        for (let col = 0; col < MAP_COLS; col++) {
+          // Determine which biome this tile belongs to
+          const biomeRow = Math.floor(row / BIOME_SIZE);
+          const biomeCol = Math.floor(col / BIOME_SIZE);
+          const isForestBiome = (biomeRow + biomeCol) % 2 === 1; // Alternating pattern
+          
+          // Set water chance based on biome
+          const waterChance = isForestBiome ? 0.06 : 0.08; // Forest has less water
+          
+          if (Math.random() < waterChance) {
+            worldData[row][col].base = 'W';
+          }
+        }
+      }
+      
+      // Apply cellular automata to create lakes
+      for (let iter = 0; iter < iterations; iter++) {
+        const newWorld = [];
+        for (let row = 0; row < MAP_ROWS; row++) {
+          const newRow = [];
+          for (let col = 0; col < MAP_COLS; col++) {
+            let waterNeighbors = 0;
+            
+            // Count water neighbors in 5x5 area
+            for (let dr = -2; dr <= 2; dr++) {
+              for (let dc = -2; dc <= 2; dc++) {
+                const nr = row + dr;
+                const nc = col + dc;
+                if (nr >= 0 && nr < MAP_ROWS && nc >= 0 && nc < MAP_COLS) {
+                  if (worldData[nr][nc].base === 'W') waterNeighbors++;
+                }
+              }
+            }
+            
+            // Apply rules for water formation
+            if (worldData[row][col].base === 'W') {
+              // Water stays if it has 4+ water neighbors
+              newRow.push({ base: waterNeighbors >= 4 ? 'W' : '.', item: null });
+            } else {
+              // Grass becomes water if 6+ water neighbors
+              newRow.push({ base: waterNeighbors >= 6 ? 'W' : '.', item: null });
+            }
+          }
+          newWorld.push(newRow);
+        }
+        worldData = newWorld;
+      }
+      
+      // Generate dirt patches using cellular automata (more frequent, smaller, irregular)
+      const dirtChance = 0.12; // 12% chance for initial dirt (more frequent)
+      const dirtIterations = 2; // Fewer iterations for smaller patches
+      
+      // Initial random dirt placement
+      for (let row = 0; row < MAP_ROWS; row++) {
+        for (let col = 0; col < MAP_COLS; col++) {
+          if (worldData[row][col].base === '.' && Math.random() < dirtChance) { // Only on grass
+            worldData[row][col].base = 'D';
+          }
+        }
+      }
+      
+      // Apply cellular automata to create natural dirt patches
+      for (let iter = 0; iter < dirtIterations; iter++) {
+        const newWorld = [];
+        for (let row = 0; row < MAP_ROWS; row++) {
+          const newRow = [];
+          for (let col = 0; col < MAP_COLS; col++) {
+            let dirtNeighbors = 0;
+            
+            // Count dirt neighbors in 3x3 area (smaller area for more irregular shapes)
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                const nr = row + dr;
+                const nc = col + dc;
+                if (nr >= 0 && nr < MAP_ROWS && nc >= 0 && nc < MAP_COLS) {
+                  if (worldData[nr][nc].base === 'D') dirtNeighbors++;
+                }
+              }
+            }
+            
+            // Apply rules for dirt formation (more aggressive for smaller, irregular patches)
+            if (worldData[row][col].base === 'D') {
+              // Dirt stays if it has 2+ dirt neighbors (easier to maintain)
+              newRow.push({ base: dirtNeighbors >= 2 ? 'D' : '.', item: null });
+            } else if (worldData[row][col].base === '.') {
+              // Grass becomes dirt if it has 3+ dirt neighbors (easier to expand)
+              newRow.push({ base: dirtNeighbors >= 3 ? 'D' : '.', item: null });
+            } else {
+              // Keep water as is
+              newRow.push({ base: worldData[row][col].base, item: null });
+            }
+          }
+          newWorld.push(newRow);
+        }
+        worldData = newWorld;
+      }
+      
+      // Count final dirt tiles
+      let dirtTilesPlaced = 0;
+      for (let row = 0; row < MAP_ROWS; row++) {
+        for (let col = 0; col < MAP_COLS; col++) {
+          if (worldData[row][col].base === 'D') dirtTilesPlaced++;
+        }
+      }
+      console.log('Dirt patches generated using cellular automata. Total dirt tiles placed:', dirtTilesPlaced);
+      
+      // Count final terrain types
+      let grassCount = 0, waterCount = 0, dirtCount = 0;
+      for (let row = 0; row < MAP_ROWS; row++) {
+        for (let col = 0; col < MAP_COLS; col++) {
+          if (worldData[row][col].base === '.') grassCount++;
+          else if (worldData[row][col].base === 'W') waterCount++;
+          else if (worldData[row][col].base === 'D') dirtCount++;
+        }
+      }
+      console.log('Terrain breakdown - Grass:', grassCount, 'Water:', waterCount, 'Dirt:', dirtCount);
+      
+      // Add random trees (2x2 trees) - biome-specific with spacing
+      // Pasture: almost no trees (5% chance)
+      // Forest: 1 tree per 10 blocks with 2-block minimum spacing
+      
+      // First, add pasture trees (very few)
+      for (let i = 0; i < 1000; i++) {
+        const row = Math.floor(Math.random() * (MAP_ROWS - 2));
+        const col = Math.floor(Math.random() * (MAP_COLS - 2));
+        
+        // Determine biome for this location
+        const biomeRow = Math.floor(row / BIOME_SIZE);
+        const biomeCol = Math.floor(col / BIOME_SIZE);
+        const isForestBiome = (biomeRow + biomeCol) % 2 === 1;
+        
+        // Only place trees in pasture biomes (5% chance)
+        if (!isForestBiome && Math.random() < 0.05) {
+          // Check if area is clear
+          if (worldData[row][col].item === null && worldData[row][col].base !== 'W' &&
+              worldData[row+1][col].item === null && worldData[row+1][col].base !== 'W' &&
+              worldData[row][col+1].item === null && worldData[row][col+1].base !== 'W' &&
+              worldData[row+1][col+1].item === null && worldData[row+1][col+1].base !== 'W') {
+            
+            worldData[row][col].item = 'T';
+            worldData[row+1][col].item = 'T';
+            worldData[row][col+1].item = 'T';
+            worldData[row+1][col+1].item = 'T';
+          }
+        }
+      }
+      
+      // Then add forest trees with spacing - EXTREMELY DENSE FOREST
+      for (let i = 0; i < 150000; i++) {
+        const row = Math.floor(Math.random() * (MAP_ROWS - 2));
+        const col = Math.floor(Math.random() * (MAP_COLS - 2));
+        
+        // Determine biome for this location
+        const biomeRow = Math.floor(row / BIOME_SIZE);
+        const biomeCol = Math.floor(col / BIOME_SIZE);
+        const isForestBiome = (biomeRow + biomeCol) % 2 === 1;
+        
+        // Only place trees in forest biomes
+        if (isForestBiome) {
+          // Check if area is clear and no trees within 1 block (tighter spacing for dense forest)
+          let canPlace = true;
+          
+          // Check 1-block radius around the tree (tighter spacing)
+          for (let dr = -1; dr <= 1; dr++) {
+            for (let dc = -1; dc <= 1; dc++) {
+              const nr = row + dr;
+              const nc = col + dc;
+              if (nr >= 0 && nr < MAP_ROWS && nc >= 0 && nc < MAP_COLS) {
+                if (worldData[nr][nc].item === 'T') {
+                  canPlace = false;
+                  break;
+                }
+              }
+            }
+            if (!canPlace) break;
+          }
+          
+          // Check if the 2x2 area is clear and high chance to place for dense forest
+          if (canPlace && worldData[row][col].item === null && worldData[row][col].base !== 'W' &&
+              worldData[row+1][col].item === null && worldData[row+1][col].base !== 'W' &&
+              worldData[row][col+1].item === null && worldData[row][col+1].base !== 'W' &&
+              worldData[row+1][col+1].item === null && worldData[row+1][col+1].base !== 'W' &&
+              Math.random() < 0.85) { // 85% chance for extremely dense forest
+            
+            worldData[row][col].item = 'T';
+            worldData[row+1][col].item = 'T';
+            worldData[row][col+1].item = 'T';
+            worldData[row+1][col+1].item = 'T';
+          }
+        }
+      }
+      
+      // Add random boulders (more frequent)
+      for (let i = 0; i < 1500; i++) {
+        const row = Math.floor(Math.random() * MAP_ROWS);
+        const col = Math.floor(Math.random() * MAP_COLS);
+        
+        if (worldData[row][col].item === null && worldData[row][col].base !== 'W') {
+          worldData[row][col].item = 'O';
+        }
+      }
+      
+      // Add random bushes - biome-specific
+      for (let i = 0; i < 32000; i++) {
+        const row = Math.floor(Math.random() * MAP_ROWS);
+        const col = Math.floor(Math.random() * MAP_COLS);
+        
+        // Determine biome for this location
+        const biomeRow = Math.floor(row / BIOME_SIZE);
+        const biomeCol = Math.floor(col / BIOME_SIZE);
+        const isForestBiome = (biomeRow + biomeCol) % 2 === 1;
+        
+        // Forest biomes have fewer bushes (42.5% chance vs 80% chance for pasture)
+        const bushChance = isForestBiome ? 0.425 : 0.8;
+        
+        if (worldData[row][col].item === null && worldData[row][col].base !== 'W' && Math.random() < bushChance) {
+          worldData[row][col].item = 'B';
+        }
+      }
+      
+      // Find a safe starting position (grass with no items)
+      let startFound = false;
+      let attempts = 0;
+      while (!startFound && attempts < 100) {
+        const row = Math.floor(Math.random() * MAP_ROWS);
+        const col = Math.floor(Math.random() * MAP_COLS);
+        
+        if (worldData[row][col].base === '.' && worldData[row][col].item === null) {
+          startPosition = { x: col, y: row };
+          startFound = true;
+        }
+        attempts++;
+      }
+      
+      // If no safe position found, use center
+      if (!startFound) {
+        startPosition = { x: Math.floor(MAP_COLS / 2), y: Math.floor(MAP_ROWS / 2) };
+      }
+      
+
+      
+
+      
+      // Add random item pickups (no weapons)
+      const items = ['H']; // blue heart only
+      for (let i = 0; i < 200; i++) {
+        const row = Math.floor(Math.random() * MAP_ROWS);
+        const col = Math.floor(Math.random() * MAP_COLS);
+        const item = items[Math.floor(Math.random() * items.length)];
+        
+        if (worldData[row][col].item === null && worldData[row][col].base !== 'W') {
+          worldData[row][col].item = item;
+        }
+      }
+      
+      // Add random enemies - biome-specific
+      const enemyTypes = ['E', 'Z', 'M']; // red, blue, brown enemies
+      for (let i = 0; i < 150; i++) {
+        const row = Math.floor(Math.random() * MAP_ROWS);
+        const col = Math.floor(Math.random() * MAP_COLS);
+        
+        // Determine biome for this location
+        const biomeRow = Math.floor(row / BIOME_SIZE);
+        const biomeCol = Math.floor(col / BIOME_SIZE);
+        const isForestBiome = (biomeRow + biomeCol) % 2 === 1;
+        
+        // Forest biomes have more enemies (80% chance vs 40% chance)
+        const enemyChance = isForestBiome ? 0.8 : 0.4;
+        
+        if (worldData[row][col].item === null && worldData[row][col].base !== 'W' && Math.random() < enemyChance) {
+          const enemyType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+          worldData[row][col].item = enemyType;
+        }
+      }
+      
+      // Add houses to pasture biomes
+      const housePattern = [
+        "XXXXX",
+        "XOOOX", 
+        "XOOOX",
+        "XOOOX",
+        "XXOXX"
+      ];
+      
+      // Calculate number of pasture biomes
+      const totalBiomes = Math.ceil(MAP_ROWS / BIOME_SIZE) * Math.ceil(MAP_COLS / BIOME_SIZE);
+      const pastureBiomes = Math.floor(totalBiomes / 2); // Half are pasture biomes
+      const totalHouses = pastureBiomes * 50; // 50 houses per pasture biome
+      
+      for (let house = 0; house < totalHouses; house++) {
+        // Find a random pasture biome
+        let biomeRow, biomeCol;
+        do {
+          biomeRow = Math.floor(Math.random() * Math.ceil(MAP_ROWS / BIOME_SIZE));
+          biomeCol = Math.floor(Math.random() * Math.ceil(MAP_COLS / BIOME_SIZE));
+        } while ((biomeRow + biomeCol) % 2 === 1); // Keep trying until we get a pasture biome (even sum)
+        
+        // Calculate biome boundaries
+        const biomeStartRow = biomeRow * BIOME_SIZE;
+        const biomeStartCol = biomeCol * BIOME_SIZE;
+        const biomeEndRow = Math.min(biomeStartRow + BIOME_SIZE, MAP_ROWS);
+        const biomeEndCol = Math.min(biomeStartCol + BIOME_SIZE, MAP_COLS);
+        
+        // Find a valid position for the house within the biome
+        let housePlaced = false;
+        let attempts = 0;
+        
+        while (!housePlaced && attempts < 50) {
+          // Random position within the biome, leaving space for the house
+          const startRow = biomeStartRow + Math.floor(Math.random() * (biomeEndRow - biomeStartRow - housePattern.length));
+          const startCol = biomeStartCol + Math.floor(Math.random() * (biomeEndCol - biomeStartCol - housePattern[0].length));
+          
+          // Check if the area is clear
+          let canPlace = true;
+          for (let r = 0; r < housePattern.length; r++) {
+            for (let c = 0; c < housePattern[r].length; c++) {
+              const worldRow = startRow + r;
+              const worldCol = startCol + c;
+              
+              if (worldRow >= MAP_ROWS || worldCol >= MAP_COLS) {
+                canPlace = false;
+                break;
+              }
+              
+              // Check if the tile is grass and has no items
+              if (worldData[worldRow][worldCol].base !== '.' || worldData[worldRow][worldCol].item !== null) {
+                canPlace = false;
+                break;
+              }
+            }
+            if (!canPlace) break;
+          }
+          
+          if (canPlace) {
+            // Place the house
+            for (let r = 0; r < housePattern.length; r++) {
+              for (let c = 0; c < housePattern[r].length; c++) {
+                const worldRow = startRow + r;
+                const worldCol = startCol + c;
+                const tile = housePattern[r][c];
+                
+                if (tile === 'X') {
+                  worldData[worldRow][worldCol].base = 'X'; // Brick wall
+                } else if (tile === 'O') {
+                  worldData[worldRow][worldCol].base = 'O'; // Wooden plank
+                  
+                  // 1.2% chance per plank tile to contain a sword
+                  if (Math.random() < 0.012) {
+                    worldData[worldRow][worldCol].item = 'W'; // Sword
+                  }
+                }
+              }
+            }
+            housePlaced = true;
+          }
+          
+          attempts++;
+        }
+      }
     }
     
     function findStartPosition() {
@@ -2286,6 +3568,85 @@
       });
     }
 
+    function checkPunchHit() {
+      if (player.punchAnimation <= 0) return;
+      // Punch hit circle - circular hitbox in front of player
+      const punchDistance = player.radius + 20; // Distance in front of player
+      const punchRadius = player.radius * 1.33; // Twice as big (2/3 * 2 = 1.33)
+      
+      // Calculate the center of the punch hitbox
+      const hitboxCenterX = player.x + Math.cos(player.angle) * punchDistance;
+      const hitboxCenterY = player.y + Math.sin(player.angle) * punchDistance;
+      
+      // Check for enemy hits
+      enemies.forEach(enemy => {
+        if ((enemy.knockback || enemy.stunTimer > 0) && enemy.type !== 'brown') return; // Only skip for non-brown enemies
+        
+        // Check if enemy is within the punch circle
+        const dx = enemy.x - hitboxCenterX;
+        const dy = enemy.y - hitboxCenterY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance <= punchRadius + enemy.radius) {
+          // Punch does 0.25 damage (1/4 of a heart)
+          enemy.health -= 0.25;
+          
+          // Small knockback for punch
+          const knockbackDist = TILE_SIZE * 0.5; // Half tile knockback
+          const angle = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+          enemy.knockback = {
+            angle: angle,
+            remaining: knockbackDist,
+            speed: 4 // Slower knockback speed
+          };
+          enemy.stunTimer = 15; // Short stun (0.25 seconds)
+          
+          // If brown, trigger frantic only if not already frantic
+          if (enemy.type === 'brown' && !enemy.frantic) {
+            enemy.frantic = true;
+            enemy.franticTimer = 120; // 2 seconds at 60fps
+            enemy.franticOsc = 0;
+            enemy.franticDir = Math.random() < 0.5 ? 1 : -1;
+          }
+          
+          if (enemy.type === 'brown') {
+            console.log('Brown enemy health:', enemy.health);
+          }
+          return; // Only hit once per punch
+        }
+      });
+      
+      // Check for bush and tree hits
+      // Check all tiles within the punch circle area
+      const startCol = Math.floor((hitboxCenterX - punchRadius) / TILE_SIZE);
+      const endCol = Math.ceil((hitboxCenterX + punchRadius) / TILE_SIZE);
+      const startRow = Math.floor((hitboxCenterY - punchRadius) / TILE_SIZE);
+      const endRow = Math.ceil((hitboxCenterY + punchRadius) / TILE_SIZE);
+      
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          if (row >= 0 && row < worldData.length && col >= 0 && col < worldData[0].length) {
+            // Check if this tile is within the punch circle
+            const tileCenterX = col * TILE_SIZE + TILE_SIZE / 2;
+            const tileCenterY = row * TILE_SIZE + TILE_SIZE / 2;
+            const dx = tileCenterX - hitboxCenterX;
+            const dy = tileCenterY - hitboxCenterY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance <= punchRadius) {
+              if (worldData[row][col].item === 'B') {
+                // Punch damages bushes - deals 0.25 damage (1/4 of a heart)
+                damageBush(row, col, 0.25);
+              } else if (worldData[row][col].item === 'T') {
+                // Punch damages trees - deals 0.25 damage (1/4 of a heart)
+                damageTree(row, col, 0.25);
+              }
+            }
+          }
+        }
+      }
+    }
+
     function checkPlayerAxeHit() {
       if (!player.hasAxe || player.axeAnimation <= 0) return;
       // Axe hit arc - much tighter than sword, mostly forward
@@ -2313,7 +3674,7 @@
           angleStep = franticAngleStep;
           localStartAngle = player.angle - arcAngle / 2;
         }
-        if ((enemy.knockback || enemy.stunTimer > 0) && enemy.type !== 'brown') return; // Only skip for non-brown enemies
+        if (enemy.knockback || enemy.stunTimer > 0) return; // Skip all stunned/knocked back enemies
         for (let i = 0; i <= Math.round(arcAngle / angleStep); i++) {
           const currentAngle = localStartAngle + (angleStep * i);
           for (let r = axeRangeStart; r <= axeRangeEnd; r += 8) {
@@ -2460,13 +3821,14 @@
     }
 
     function fireSlingshot() {
-      // Fire a black ball in the direction the player is facing
+      console.log('fireSlingshot() called!');
+      // Fire a rock in the direction the player is facing
       const speed = 10;
       // Calculate hand position in front of player (where slingshot is drawn)
       const handOffset = player.radius + 10; // matches hand/slingshot position
       const handX = player.x + Math.cos(player.angle) * handOffset;
       const handY = player.y + Math.sin(player.angle) * handOffset;
-      projectiles.push({
+      const projectile = {
         x: handX,
         y: handY,
         angle: player.angle,
@@ -2474,8 +3836,11 @@
         radius: 7,
         alive: true,
         distanceTraveled: 0,
-        maxDistance: 6 * TILE_SIZE
-      });
+        maxDistance: 6 * TILE_SIZE,
+        fromEnemy: false // This is a player projectile
+      };
+      projectiles.push(projectile);
+      console.log('Projectile created, total projectiles:', projectiles.length);
     }
 
     function updateDamageAnimations() {
@@ -2534,8 +3899,10 @@
           for (let i = 0; i < enemies.length; i++) {
             const enemy = enemies[i];
             if (isCircleOverlap(proj.x, proj.y, proj.radius, enemy.x, enemy.y, enemy.radius)) {
+              console.log('Projectile hit enemy! Enemy health before:', enemy.health);
               proj.alive = false;
               enemy.health--;
+              console.log('Enemy health after:', enemy.health);
               break;
             }
           }
@@ -2596,13 +3963,14 @@
         ctx.arc(iconX + 16, iconY + 16, 14, 0, Math.PI * 2);
         ctx.fill();
       }
-      // Draw count
+      // Draw count (sum all slots with rocks)
+      const rockCount = player.inventory.reduce((sum, slot) => slot.type === 'rock' ? sum + slot.count : sum, 0);
       ctx.font = '24px Arial';
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = '#222';
       ctx.lineWidth = 3;
-      ctx.strokeText('x' + (player.inventory[0].count || 0), iconX + 40, iconY + 28);
-      ctx.fillText('x' + (player.inventory[0].count || 0), iconX + 40, iconY + 28);
+      ctx.strokeText('x' + rockCount, iconX + 40, iconY + 28);
+      ctx.fillText('x' + rockCount, iconX + 40, iconY + 28);
       ctx.restore();
       // Draw wood icon and count below rock
       const woodIconY = iconY + 40;
@@ -2615,12 +3983,14 @@
         ctx.arc(iconX + 16, woodIconY + 16, 14, 0, Math.PI * 2);
         ctx.fill();
       }
+      // Draw count (sum all slots with wood)
+      const woodCount = player.inventory.reduce((sum, slot) => slot.type === 'wood' ? sum + slot.count : sum, 0);
       ctx.font = '24px Arial';
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = '#222';
       ctx.lineWidth = 3;
-      ctx.strokeText('x' + (player.inventory[1].count || 0), iconX + 40, woodIconY + 28);
-      ctx.fillText('x' + (player.inventory[1].count || 0), iconX + 40, woodIconY + 28);
+      ctx.strokeText('x' + woodCount, iconX + 40, woodIconY + 28);
+      ctx.fillText('x' + woodCount, iconX + 40, woodIconY + 28);
       ctx.restore();
     }
 
@@ -2635,6 +4005,787 @@
         ctx.fill();
       }
       ctx.restore();
+    }
+
+    function drawCraftingTable(x, y) {
+      ctx.save();
+      const craftingTableImg = new Image();
+      craftingTableImg.src = 'craftingTable.png';
+      if (craftingTableImg.complete) {
+        ctx.drawImage(craftingTableImg, x - 16, y - 16, 32, 32);
+      } else {
+        // Fallback: draw a simple crafting table
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(x - 12, y - 4, 8, 8); // table legs
+        ctx.fillStyle = '#654321';
+        ctx.fillRect(x - 10, y - 8, 12, 4); // table top
+      }
+      ctx.restore();
+    }
+
+    function drawChess(x, y) {
+      ctx.save();
+      const chessImg = new Image();
+      chessImg.src = 'chessClosed.png';
+      if (chessImg.complete) {
+        ctx.drawImage(chessImg, x - 16, y - 16, 32, 32);
+      } else {
+        // Fallback: draw a simple chess piece
+        ctx.fillStyle = '#8B4513';
+        ctx.fillRect(x - 8, y - 4, 6, 8); // base
+        ctx.fillStyle = '#654321';
+        ctx.fillRect(x - 6, y - 8, 10, 4); // piece
+      }
+      ctx.restore();
+    }
+
+    function openCraftingMenu() {
+      craftingMenuOpen = true;
+      // Create overlay if it doesn't exist
+      let overlay = document.getElementById('craftingMenuOverlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'craftingMenuOverlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+        overlay.style.background = 'rgba(0,0,0,0.8)';
+        overlay.style.display = 'flex';
+        overlay.style.flexDirection = 'column';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = '1000';
+        document.body.appendChild(overlay);
+      }
+      overlay.style.display = 'flex';
+      renderCraftingMenu();
+    }
+
+    function openChessMenu(row, col) {
+      chessMenuOpen = true;
+      openChessPosition = { row: row, col: col }; // Track which chess is open
+      // Create overlay if it doesn't exist
+      let overlay = document.getElementById('chessMenuOverlay');
+      if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'chessMenuOverlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+        overlay.style.background = 'rgba(0,0,0,0.8)';
+        overlay.style.display = 'flex';
+        overlay.style.flexDirection = 'column';
+        overlay.style.alignItems = 'center';
+        overlay.style.justifyContent = 'center';
+        overlay.style.zIndex = '1000';
+        document.body.appendChild(overlay);
+      }
+      overlay.style.display = 'flex';
+      renderChessMenu(row, col);
+    }
+
+    function renderCraftingMenu() {
+      const overlay = document.getElementById('craftingMenuOverlay');
+      if (!overlay) return;
+      
+      overlay.innerHTML = `
+        <div style="display: flex; gap: 20px; align-items: flex-start;">
+          <!-- Crafting Table Section -->
+          <div style="background: #333; padding: 20px; border-radius: 10px; border: 2px solid #666;">
+            <h2 style="color: white; text-align: center; margin-bottom: 20px;">Crafting Table</h2>
+            <div id="craftingMenuGrid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+              <!-- 3x3 grid will be populated here -->
+            </div>
+            <div id="craftingMenuResult" style="text-align: center; margin-bottom: 20px;">
+              <!-- Crafting result will appear here -->
+            </div>
+            <div style="text-align: center; color: white; font-size: 14px;">
+              Press SPACE or ESC to close
+            </div>
+          </div>
+          
+          <!-- Inventory Section -->
+          <div id="craftingInventorySection" style="background: #333; padding: 20px; border-radius: 10px; border: 2px solid #666; min-width: 300px;">
+            <h3 style="color: white; text-align: center; margin-bottom: 15px;">Inventory</h3>
+            <div id="craftingInventoryGrid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 15px;">
+              <!-- 6 main inventory slots will be populated here -->
+            </div>
+            <div style="text-align: center; color: #888; font-size: 12px;">
+              Drag items from inventory to crafting grid
+            </div>
+          </div>
+        </div>
+      `;
+      
+      const grid = document.getElementById('craftingMenuGrid');
+      const result = document.getElementById('craftingMenuResult');
+      
+      // Create 3x3 grid
+      for (let i = 0; i < 9; i++) {
+        const slot = craftingMenuGrid[i];
+        const div = document.createElement('div');
+        div.className = 'crafting-menu-slot';
+        div.style.width = '60px';
+        div.style.height = '60px';
+        div.style.background = '#444';
+        div.style.border = '2px solid #666';
+        div.style.borderRadius = '8px';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.justifyContent = 'center';
+        div.style.position = 'relative';
+        div.style.cursor = 'pointer';
+        div.dataset.slotIndex = i;
+        
+        if (slot.type && slot.count > 0) {
+          let icon = '';
+          if (slot.type === 'rock') icon = '🪨';
+          else if (slot.type === 'wood') icon = '🪵';
+          else if (slot.type === 'sword') icon = '🗡️';
+          else if (slot.type === 'slingshot') icon = '🏹';
+          else if (slot.type === 'axe') icon = '🪓';
+          else if (slot.type === 'craftingTable') icon = '🛠️';
+          else if (slot.type === 'chess') {
+            div.innerHTML = `<img src="chessClosed.png" style="width: 32px; height: 32px;">`;
+          } else {
+            icon = slot.type;
+          }
+          
+          div.innerHTML = `<span style="font-size: 32px;">${icon}</span>`;
+          
+          if (slot.count > 1) {
+            const countDiv = document.createElement('div');
+            countDiv.textContent = slot.count;
+            countDiv.style.position = 'absolute';
+            countDiv.style.right = '5px';
+            countDiv.style.bottom = '5px';
+            countDiv.style.color = '#fff';
+            countDiv.style.fontSize = '14px';
+            countDiv.style.background = 'rgba(0,0,0,0.7)';
+            countDiv.style.padding = '2px 4px';
+            countDiv.style.borderRadius = '3px';
+            div.appendChild(countDiv);
+          }
+        }
+        
+        // Add click handler for drag and drop
+        div.onclick = function(e) {
+          handleCraftingMenuClick({ slotType: 'craftingMenu', index: i });
+        };
+        
+        grid.appendChild(div);
+      }
+      
+      // Populate inventory section
+      const inventoryGrid = document.getElementById('craftingInventoryGrid');
+      if (inventoryGrid) {
+        inventoryGrid.innerHTML = '';
+        
+        // Create 6 slots for inventory display
+        for (let i = 0; i < 6; i++) {
+          const div = document.createElement('div');
+          div.className = 'crafting-inventory-slot';
+          div.style.width = '40px';
+          div.style.height = '40px';
+          div.style.background = '#444';
+          div.style.border = '2px solid #555';
+          div.style.borderRadius = '6px';
+          div.style.display = 'flex';
+          div.style.alignItems = 'center';
+          div.style.justifyContent = 'center';
+          div.style.position = 'relative';
+          div.style.cursor = 'pointer';
+          div.dataset.inventoryIndex = i;
+          
+          // Show inventory item if it exists
+          if (player.inventory[i] && player.inventory[i].type && player.inventory[i].count > 0) {
+            const item = player.inventory[i];
+            let icon = '';
+            if (item.type === 'rock') icon = '🪨';
+            else if (item.type === 'wood') icon = '🪵';
+            else if (item.type === 'sword') icon = '🗡️';
+            else if (item.type === 'slingshot') icon = '🏹';
+            else if (item.type === 'axe') icon = '🪓';
+            else if (item.type === 'craftingTable') icon = '🛠️';
+            else if (item.type === 'chess') {
+              div.innerHTML = `<img src="chessClosed.png" style="width: 24px; height: 24px;">`;
+            } else {
+              icon = item.type;
+            }
+            
+            div.innerHTML = `<span style="font-size: 24px;">${icon}</span>`;
+            
+            if (item.count > 1) {
+              const countDiv = document.createElement('div');
+              countDiv.textContent = item.count;
+              countDiv.style.position = 'absolute';
+              countDiv.style.right = '2px';
+              countDiv.style.bottom = '2px';
+              countDiv.style.color = '#fff';
+              countDiv.style.fontSize = '10px';
+              countDiv.style.background = 'rgba(0,0,0,0.7)';
+              countDiv.style.padding = '1px 3px';
+              countDiv.style.borderRadius = '2px';
+              div.appendChild(countDiv);
+            }
+            
+            // Add click handler to move item to crafting grid
+            div.onclick = function() {
+              if (player.inventory[i] && player.inventory[i].type && player.inventory[i].count > 0) {
+                // Find first empty crafting slot
+                for (let j = 0; j < 9; j++) {
+                  if (!craftingMenuGrid[j].type || craftingMenuGrid[j].count === 0) {
+                    craftingMenuGrid[j].type = player.inventory[i].type;
+                    craftingMenuGrid[j].count = 1;
+                    player.inventory[i].count--;
+                    if (player.inventory[i].count <= 0) {
+                      player.inventory[i].type = null;
+                    }
+                    renderCraftingMenu();
+                    break;
+                  }
+                }
+              }
+            };
+          }
+          
+          inventoryGrid.appendChild(div);
+        }
+      }
+      
+      // Check for crafting recipes
+      checkCraftingMenuRecipes();
+    }
+
+    function handleCraftingMenuClick(slotInfo) {
+      let slot = craftingMenuGrid[slotInfo.index];
+      
+      // Pick up item
+      if (!mouseHeldItem && slot.type && slot.count > 0) {
+        mouseHeldItem = { type: slot.type, count: slot.count };
+        slot.type = null;
+        slot.count = 0;
+        renderCraftingMenu();
+        renderMouseHeldItem();
+      }
+      // Drop item
+      else if (mouseHeldItem) {
+        // If slot is empty
+        if (!slot.type || slot.count === 0) {
+          slot.type = mouseHeldItem.type;
+          slot.count = mouseHeldItem.count;
+          mouseHeldItem = null;
+          renderCraftingMenu();
+          renderMouseHeldItem();
+        }
+        // If same type and stackable
+        else if (slot.type === mouseHeldItem.type && slot.count < getMaxStackSize(slot.type)) {
+          let canAdd = getMaxStackSize(slot.type) - slot.count;
+          let toAdd = Math.min(canAdd, mouseHeldItem.count);
+          slot.count += toAdd;
+          mouseHeldItem.count -= toAdd;
+          if (mouseHeldItem.count <= 0) mouseHeldItem = null;
+          renderCraftingMenu();
+          renderMouseHeldItem();
+        }
+      }
+    }
+
+    function checkCraftingMenuRecipes() {
+      const result = document.getElementById('craftingMenuResult');
+      if (!result) return;
+      
+      // Check for different recipes based on the 3x3 grid
+      // Sword recipe: wood on bottom (slot 7), rock in middle (slot 4), rock on top (slot 1)
+      if (craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
+          craftingMenuGrid[4].type === 'rock' && craftingMenuGrid[4].count >= 1 &&
+          craftingMenuGrid[1].type === 'rock' && craftingMenuGrid[1].count >= 1) {
+        // Sword recipe
+        result.innerHTML = `
+          <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('sword')">
+            <span style="font-size: 24px;">🗡️</span> Sword
+          </div>
+        `;
+      }
+      // Axe recipe: rock on top (slot 1), rock on top-right (slot 2), rock on right (slot 5), wood in middle (slot 4), wood on bottom (slot 7)
+      else if (craftingMenuGrid[1].type === 'rock' && craftingMenuGrid[1].count >= 1 &&
+               craftingMenuGrid[2].type === 'rock' && craftingMenuGrid[2].count >= 1 &&
+               craftingMenuGrid[5].type === 'rock' && craftingMenuGrid[5].count >= 1 &&
+               craftingMenuGrid[4].type === 'wood' && craftingMenuGrid[4].count >= 1 &&
+               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1) {
+        // Axe recipe
+        result.innerHTML = `
+          <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('axe')">
+            <span style="font-size: 24px;">🪓</span> Axe
+          </div>
+        `;
+      }
+      // Slingshot recipe: wood on upper left (slot 0), upper right (slot 2), middle (slot 4), bottom (slot 7)
+      else if (craftingMenuGrid[0].type === 'wood' && craftingMenuGrid[0].count >= 1 &&
+               craftingMenuGrid[2].type === 'wood' && craftingMenuGrid[2].count >= 1 &&
+               craftingMenuGrid[4].type === 'wood' && craftingMenuGrid[4].count >= 1 &&
+               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1) {
+        // Slingshot recipe
+        result.innerHTML = `
+          <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('slingshot')">
+            <span style="font-size: 24px;">🏹</span> Slingshot
+          </div>
+        `;
+      }
+      // Chess recipe: wood on upper left (slot 0), upper (slot 1), upper right (slot 2), left (slot 3), right (slot 5), bottom left (slot 6), bottom middle (slot 7), bottom right (slot 8), rock in middle (slot 4)
+      else if (craftingMenuGrid[0].type === 'wood' && craftingMenuGrid[0].count >= 1 &&
+               craftingMenuGrid[1].type === 'wood' && craftingMenuGrid[1].count >= 1 &&
+               craftingMenuGrid[2].type === 'wood' && craftingMenuGrid[2].count >= 1 &&
+               craftingMenuGrid[3].type === 'wood' && craftingMenuGrid[3].count >= 1 &&
+               craftingMenuGrid[5].type === 'wood' && craftingMenuGrid[5].count >= 1 &&
+               craftingMenuGrid[6].type === 'wood' && craftingMenuGrid[6].count >= 1 &&
+               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
+               craftingMenuGrid[8].type === 'wood' && craftingMenuGrid[8].count >= 1 &&
+               craftingMenuGrid[4].type === 'rock' && craftingMenuGrid[4].count >= 1) {
+        // Chess recipe
+        result.innerHTML = `
+          <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('chess')">
+            <span style="font-size: 24px;">♟️</span> Chess
+          </div>
+        `;
+      }
+      // Add more recipes here as needed
+      else {
+        result.innerHTML = '<div style="color: #888;">No recipe available</div>';
+      }
+    }
+
+    function craftItem(itemType) {
+      // Handle crafting logic based on item type
+      if (itemType === 'sword') {
+        // Remove ingredients: wood from bottom (slot 7), rock from middle (slot 4), rock from top (slot 1)
+        if (craftingMenuGrid[7].count > 0) {
+          craftingMenuGrid[7].count--;
+          if (craftingMenuGrid[7].count <= 0) {
+            craftingMenuGrid[7].type = null;
+          }
+        }
+        if (craftingMenuGrid[4].count > 0) {
+          craftingMenuGrid[4].count--;
+          if (craftingMenuGrid[4].count <= 0) {
+            craftingMenuGrid[4].type = null;
+          }
+        }
+        if (craftingMenuGrid[1].count > 0) {
+          craftingMenuGrid[1].count--;
+          if (craftingMenuGrid[1].count <= 0) {
+            craftingMenuGrid[1].type = null;
+          }
+        }
+        
+        // Add crafted item to inventory
+        const slot = findInventorySlot('sword', false);
+        if (slot !== -1) {
+          if (player.inventory[slot].type === 'sword') {
+            player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, 1);
+          } else {
+            player.inventory[slot].type = 'sword';
+            player.inventory[slot].count = 1;
+          }
+          player.hasSword = true; // Set the sword flag for crafted swords
+        }
+        
+        renderCraftingMenu();
+      }
+      else if (itemType === 'axe') {
+        // Remove ingredients: rock from top (slot 1), rock from top-right (slot 2), rock from right (slot 5), wood from middle (slot 4), wood from bottom (slot 7)
+        if (craftingMenuGrid[1].count > 0) {
+          craftingMenuGrid[1].count--;
+          if (craftingMenuGrid[1].count <= 0) {
+            craftingMenuGrid[1].type = null;
+          }
+        }
+        if (craftingMenuGrid[2].count > 0) {
+          craftingMenuGrid[2].count--;
+          if (craftingMenuGrid[2].count <= 0) {
+            craftingMenuGrid[2].type = null;
+          }
+        }
+        if (craftingMenuGrid[5].count > 0) {
+          craftingMenuGrid[5].count--;
+          if (craftingMenuGrid[5].count <= 0) {
+            craftingMenuGrid[5].type = null;
+          }
+        }
+        if (craftingMenuGrid[4].count > 0) {
+          craftingMenuGrid[4].count--;
+          if (craftingMenuGrid[4].count <= 0) {
+            craftingMenuGrid[4].type = null;
+          }
+        }
+        if (craftingMenuGrid[7].count > 0) {
+          craftingMenuGrid[7].count--;
+          if (craftingMenuGrid[7].count <= 0) {
+            craftingMenuGrid[7].type = null;
+          }
+        }
+        
+        // Add crafted item to inventory
+        const slot = findInventorySlot('axe', false);
+        if (slot !== -1) {
+          if (player.inventory[slot].type === 'axe') {
+            player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, 1);
+          } else {
+            player.inventory[slot].type = 'axe';
+            player.inventory[slot].count = 1;
+          }
+          player.hasAxe = true; // Set the axe flag for crafted axes
+        }
+        
+        renderCraftingMenu();
+      }
+      else if (itemType === 'slingshot') {
+        // Remove ingredients: wood from upper left (slot 0), upper right (slot 2), middle (slot 4), bottom (slot 7)
+        if (craftingMenuGrid[0].count > 0) {
+          craftingMenuGrid[0].count--;
+          if (craftingMenuGrid[0].count <= 0) {
+            craftingMenuGrid[0].type = null;
+          }
+        }
+        if (craftingMenuGrid[2].count > 0) {
+          craftingMenuGrid[2].count--;
+          if (craftingMenuGrid[2].count <= 0) {
+            craftingMenuGrid[2].type = null;
+          }
+        }
+        if (craftingMenuGrid[4].count > 0) {
+          craftingMenuGrid[4].count--;
+          if (craftingMenuGrid[4].count <= 0) {
+            craftingMenuGrid[4].type = null;
+          }
+        }
+        if (craftingMenuGrid[7].count > 0) {
+          craftingMenuGrid[7].count--;
+          if (craftingMenuGrid[7].count <= 0) {
+            craftingMenuGrid[7].type = null;
+          }
+        }
+        
+        // Add crafted item to inventory
+        const slot = findInventorySlot('slingshot', false);
+        if (slot !== -1) {
+          if (player.inventory[slot].type === 'slingshot') {
+            player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, 1);
+          } else {
+            player.inventory[slot].type = 'slingshot';
+            player.inventory[slot].count = 1;
+          }
+          player.hasSlingshot = true; // Set the slingshot flag for crafted slingshots
+        }
+        
+        renderCraftingMenu();
+      }
+      else if (itemType === 'chess') {
+        // Remove ingredients: wood from upper left (slot 0), upper (slot 1), upper right (slot 2), left (slot 3), right (slot 5), bottom left (slot 6), bottom middle (slot 7), bottom right (slot 8), rock from middle (slot 4)
+        if (craftingMenuGrid[0].count > 0) {
+          craftingMenuGrid[0].count--;
+          if (craftingMenuGrid[0].count <= 0) {
+            craftingMenuGrid[0].type = null;
+          }
+        }
+        if (craftingMenuGrid[1].count > 0) {
+          craftingMenuGrid[1].count--;
+          if (craftingMenuGrid[1].count <= 0) {
+            craftingMenuGrid[1].type = null;
+          }
+        }
+        if (craftingMenuGrid[2].count > 0) {
+          craftingMenuGrid[2].count--;
+          if (craftingMenuGrid[2].count <= 0) {
+            craftingMenuGrid[2].type = null;
+          }
+        }
+        if (craftingMenuGrid[3].count > 0) {
+          craftingMenuGrid[3].count--;
+          if (craftingMenuGrid[3].count <= 0) {
+            craftingMenuGrid[3].type = null;
+          }
+        }
+        if (craftingMenuGrid[5].count > 0) {
+          craftingMenuGrid[5].count--;
+          if (craftingMenuGrid[5].count <= 0) {
+            craftingMenuGrid[5].type = null;
+          }
+        }
+        if (craftingMenuGrid[6].count > 0) {
+          craftingMenuGrid[6].count--;
+          if (craftingMenuGrid[6].count <= 0) {
+            craftingMenuGrid[6].type = null;
+          }
+        }
+        if (craftingMenuGrid[7].count > 0) {
+          craftingMenuGrid[7].count--;
+          if (craftingMenuGrid[7].count <= 0) {
+            craftingMenuGrid[7].type = null;
+          }
+        }
+        if (craftingMenuGrid[8].count > 0) {
+          craftingMenuGrid[8].count--;
+          if (craftingMenuGrid[8].count <= 0) {
+            craftingMenuGrid[8].type = null;
+          }
+        }
+        if (craftingMenuGrid[4].count > 0) {
+          craftingMenuGrid[4].count--;
+          if (craftingMenuGrid[4].count <= 0) {
+            craftingMenuGrid[4].type = null;
+          }
+        }
+        
+        // Add crafted item to inventory
+        const slot = findInventorySlot('chess', false);
+        if (slot !== -1) {
+          if (player.inventory[slot].type === 'chess') {
+            player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, 1);
+          } else {
+            player.inventory[slot].type = 'chess';
+            player.inventory[slot].count = 1;
+          }
+        }
+        
+        renderCraftingMenu();
+      }
+    }
+
+    function returnCraftingMenuItems() {
+      // Return all items from crafting menu to inventory
+      for (let i = 0; i < 9; i++) {
+        const slot = craftingMenuGrid[i];
+        if (slot.type && slot.count > 0) {
+          const inventorySlot = findInventorySlot(slot.type, true);
+          if (inventorySlot !== -1) {
+            if (player.inventory[inventorySlot].type === slot.type) {
+              player.inventory[inventorySlot].count = Math.min(
+                player.inventory[inventorySlot].count + slot.count, 
+                getMaxStackSize(slot.type)
+              );
+            } else {
+              player.inventory[inventorySlot].type = slot.type;
+              player.inventory[inventorySlot].count = slot.count;
+            }
+          }
+          slot.type = null;
+          slot.count = 0;
+        }
+      }
+    }
+
+    function renderChessMenu(row, col) {
+      const overlay = document.getElementById('chessMenuOverlay');
+      if (!overlay) return;
+      
+      const key = `${row},${col}`;
+      const storage = chessStorage.get(key) || Array(12).fill().map(() => ({ type: null, count: 0 }));
+      
+      overlay.innerHTML = `
+        <div style="display: flex; gap: 20px; align-items: flex-start;">
+          <!-- Chess Storage Section -->
+          <div style="background: #333; padding: 20px; border-radius: 10px; border: 2px solid #666;">
+            <h2 style="color: white; text-align: center; margin-bottom: 20px;">Chess Storage</h2>
+            <div id="chessStorageGrid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+              <!-- 4x3 grid will be populated here -->
+            </div>
+            <div style="text-align: center; color: white; font-size: 14px;">
+              Press SPACE or ESC to close
+            </div>
+          </div>
+          
+          <!-- Inventory Section -->
+          <div id="chessInventorySection" style="background: #333; padding: 20px; border-radius: 10px; border: 2px solid #666; min-width: 300px;">
+            <h3 style="color: white; text-align: center; margin-bottom: 15px;">Inventory</h3>
+            <div id="chessInventoryGrid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-bottom: 15px;">
+              <!-- 6 main inventory slots will be populated here -->
+            </div>
+            <div style="text-align: center; color: #888; font-size: 12px;">
+              Drag items from inventory to chess storage
+            </div>
+          </div>
+        </div>
+      `;
+      
+      const storageGrid = document.getElementById('chessStorageGrid');
+      
+      // Create 4x3 grid (12 slots)
+      for (let i = 0; i < 12; i++) {
+        const slot = storage[i];
+        const div = document.createElement('div');
+        div.className = 'chess-storage-slot';
+        div.style.width = '60px';
+        div.style.height = '60px';
+        div.style.background = '#444';
+        div.style.border = '2px solid #666';
+        div.style.borderRadius = '8px';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.justifyContent = 'center';
+        div.style.position = 'relative';
+        div.style.cursor = 'pointer';
+        div.dataset.slotIndex = i;
+        
+        if (slot.type && slot.count > 0) {
+          if (slot.type === 'chess') {
+            div.innerHTML = `<img src="chessClosed.png" style="width: 32px; height: 32px;">`;
+          } else {
+            let icon = '';
+            if (slot.type === 'rock') icon = '🪨';
+            else if (slot.type === 'wood') icon = '🪵';
+            else if (slot.type === 'sword') icon = '🗡️';
+            else if (slot.type === 'slingshot') icon = '🏹';
+            else if (slot.type === 'axe') icon = '🪓';
+            else if (slot.type === 'craftingTable') icon = '🛠️';
+            else icon = slot.type;
+            
+            div.innerHTML = `<span style="font-size: 32px;">${icon}</span>`;
+          }
+          
+          if (slot.count > 1) {
+            const countDiv = document.createElement('div');
+            countDiv.textContent = slot.count;
+            countDiv.style.position = 'absolute';
+            countDiv.style.right = '5px';
+            countDiv.style.bottom = '5px';
+            countDiv.style.color = '#fff';
+            countDiv.style.fontSize = '14px';
+            countDiv.style.background = 'rgba(0,0,0,0.7)';
+            countDiv.style.padding = '2px 4px';
+            countDiv.style.borderRadius = '3px';
+            div.appendChild(countDiv);
+          }
+        }
+        
+        // Add click handler for drag and drop
+        div.onclick = function(e) {
+          handleChessMenuClick({ slotType: 'chessStorage', index: i, row: row, col: col });
+        };
+        
+        storageGrid.appendChild(div);
+      }
+      
+      // Populate inventory section
+      const inventoryGrid = document.getElementById('chessInventoryGrid');
+      if (inventoryGrid) {
+        inventoryGrid.innerHTML = '';
+        
+        // Create 6 slots for inventory display
+        for (let i = 0; i < 6; i++) {
+          const div = document.createElement('div');
+          div.className = 'chess-inventory-slot';
+          div.style.width = '40px';
+          div.style.height = '40px';
+          div.style.background = '#444';
+          div.style.border = '2px solid #555';
+          div.style.borderRadius = '6px';
+          div.style.display = 'flex';
+          div.style.alignItems = 'center';
+          div.style.justifyContent = 'center';
+          div.style.position = 'relative';
+          div.style.cursor = 'pointer';
+          div.dataset.inventoryIndex = i;
+          
+          // Show inventory item if it exists
+          if (player.inventory[i] && player.inventory[i].type && player.inventory[i].count > 0) {
+            const item = player.inventory[i];
+            if (item.type === 'chess') {
+              div.innerHTML = `<img src="chessClosed.png" style="width: 24px; height: 24px;">`;
+            } else {
+              let icon = '';
+              if (item.type === 'rock') icon = '🪨';
+              else if (item.type === 'wood') icon = '🪵';
+              else if (item.type === 'sword') icon = '🗡️';
+              else if (item.type === 'slingshot') icon = '🏹';
+              else if (item.type === 'axe') icon = '🪓';
+              else if (item.type === 'craftingTable') icon = '🛠️';
+              else icon = item.type;
+              
+              div.innerHTML = `<span style="font-size: 24px;">${icon}</span>`;
+            }
+            
+            if (item.count > 1) {
+              const countDiv = document.createElement('div');
+              countDiv.textContent = item.count;
+              countDiv.style.position = 'absolute';
+              countDiv.style.right = '2px';
+              countDiv.style.bottom = '2px';
+              countDiv.style.color = '#fff';
+              countDiv.style.fontSize = '10px';
+              countDiv.style.background = 'rgba(0,0,0,0.7)';
+              countDiv.style.padding = '1px 3px';
+              countDiv.style.borderRadius = '2px';
+              div.appendChild(countDiv);
+            }
+            
+            // Add click handler to move item to chess storage
+            div.onclick = function() {
+              if (player.inventory[i] && player.inventory[i].type && player.inventory[i].count > 0) {
+                // Find first empty chess storage slot
+                for (let j = 0; j < 12; j++) {
+                  if (!storage[j].type || storage[j].count === 0) {
+                    storage[j].type = player.inventory[i].type;
+                    storage[j].count = 1;
+                    player.inventory[i].count--;
+                    if (player.inventory[i].count <= 0) {
+                      player.inventory[i].type = null;
+                    }
+                    chessStorage.set(key, storage);
+                    renderChessMenu(row, col);
+                    break;
+                  }
+                }
+              }
+            };
+          }
+          
+          inventoryGrid.appendChild(div);
+        }
+      }
+    }
+
+    function handleChessMenuClick(slotInfo) {
+      const key = `${slotInfo.row},${slotInfo.col}`;
+      const storage = chessStorage.get(key) || Array(12).fill().map(() => ({ type: null, count: 0 }));
+      let slot = storage[slotInfo.index];
+      
+      // Pick up item
+      if (!mouseHeldItem && slot.type && slot.count > 0) {
+        mouseHeldItem = { type: slot.type, count: slot.count };
+        slot.type = null;
+        slot.count = 0;
+        chessStorage.set(key, storage);
+        renderChessMenu(slotInfo.row, slotInfo.col);
+        renderMouseHeldItem();
+      }
+      // Drop item
+      else if (mouseHeldItem) {
+        // If slot is empty
+        if (!slot.type || slot.count === 0) {
+          slot.type = mouseHeldItem.type;
+          slot.count = mouseHeldItem.count;
+          mouseHeldItem = null;
+          chessStorage.set(key, storage);
+          renderChessMenu(slotInfo.row, slotInfo.col);
+          renderMouseHeldItem();
+        }
+        // If same type and stackable
+        else if (slot.type === mouseHeldItem.type && slot.count < getMaxStackSize(slot.type)) {
+          let canAdd = getMaxStackSize(slot.type) - slot.count;
+          let toAdd = Math.min(canAdd, mouseHeldItem.count);
+          slot.count += toAdd;
+          mouseHeldItem.count -= toAdd;
+          if (mouseHeldItem.count <= 0) mouseHeldItem = null;
+          chessStorage.set(key, storage);
+          renderChessMenu(slotInfo.row, slotInfo.col);
+          renderMouseHeldItem();
+        }
+      }
     }
 
     // Fullscreen button logic
@@ -2671,11 +4822,61 @@
       }
     }
 
+    // Crafting helper functions
+    function countWoodInCrafting() {
+      let total = 0;
+      for (let i = 0; i < 4; i++) {
+        if (player.crafting[i].type === 'wood') total += player.crafting[i].count;
+      }
+      return total;
+    }
+
+    function removeWoodFromCrafting(amount) {
+      for (let i = 0; i < 4 && amount > 0; i++) {
+        let slot = player.crafting[i];
+        if (slot.type === 'wood' && slot.count > 0) {
+          let take = Math.min(slot.count, amount);
+          slot.count -= take;
+          amount -= take;
+          if (slot.count === 0) slot.type = null;
+        }
+      }
+    }
+
+    function findEmptyInventorySlot() {
+      // Prioritize main inventory slots (0-5) over hotbar slots (6-8)
+      for (let i = 0; i < 6; i++) {
+        if (!player.inventory[i].type || player.inventory[i].count === 0) return i;
+      }
+      // Only use hotbar slots if main inventory is full
+      for (let i = 6; i < player.inventory.length; i++) {
+        if (!player.inventory[i].type || player.inventory[i].count === 0) return i;
+      }
+      return -1;
+    }
+
+    function handleCraftingTableClick() {
+      if (countWoodInCrafting() < 4) return;
+      let slot = findEmptyInventorySlot();
+      if (slot === -1) {
+        alert('No space in inventory!');
+        return;
+      }
+      // Remove 4 wood
+      removeWoodFromCrafting(4);
+      // Add crafting table
+      player.inventory[slot].type = 'craftingTable';
+      player.inventory[slot].count = 1;
+      renderInventoryUI();
+    }
+
     // Inventory UI rendering
     function renderInventoryUI() {
       const grid = document.getElementById('inventoryGrid');
       grid.innerHTML = '';
-      for (let i = 0; i < 9; i++) {
+      
+      // Create main inventory slots (0-5)
+      for (let i = 0; i < 6; i++) {
         const slot = player.inventory[i];
         const div = document.createElement('div');
         div.className = 'inventory-slot';
@@ -2688,8 +4889,16 @@
         div.style.alignItems = 'center';
         div.style.justifyContent = 'center';
         div.style.position = 'relative';
+        div.setAttribute('draggable', 'true');
+        div.dataset.slotType = 'inventory';
+        div.dataset.slotIndex = i;
         // Only show icon if count > 0
         if (slot.type && slot.count > 0) {
+          if (slot.type === 'craftingTable') {
+            div.innerHTML = `<img src="craftingTable.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'chess') {
+            div.innerHTML = `<img src="chessClosed.png" style="width: 40px; height: 40px;">`;
+          } else {
           let icon = '';
           if (slot.type === 'rock') icon = '🪨';
           else if (slot.type === 'wood') icon = '🪵';
@@ -2698,6 +4907,7 @@
           else if (slot.type === 'axe') icon = '🪓';
           else icon = slot.type;
           div.innerHTML = `<span style="font-size: 32px;">${icon}</span>`;
+          }
           if (slot.count > 1) {
             const countDiv = document.createElement('div');
             countDiv.textContent = slot.count;
@@ -2710,6 +4920,109 @@
             div.appendChild(countDiv);
           }
         }
+        // Click handler for pick up/drop
+        div.onclick = function(e) {
+          handleInventoryClick({ slotType: 'inventory', index: i });
+        };
+        
+        // Drag and drop handlers
+        div.ondragstart = function(e) {
+          e.dataTransfer.setData('text/plain', JSON.stringify({ slotType: 'inventory', index: i }));
+        };
+        div.ondragover = function(e) { e.preventDefault(); };
+        div.ondrop = function(e) {
+          e.preventDefault();
+          const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+          handleInventoryDrop(data, { slotType: 'inventory', index: i });
+        };
+        grid.appendChild(div);
+      }
+      
+      // Add separator line
+      const separator = document.createElement('div');
+      separator.style.width = '100%';
+      separator.style.height = '2px';
+      separator.style.background = '#666';
+      separator.style.margin = '8px 0';
+      separator.style.borderRadius = '1px';
+      separator.style.gridColumn = '1 / -1'; // Span all columns
+      grid.appendChild(separator);
+      
+      // Create hotbar slots (6-8) with different styling
+      for (let i = 6; i < 9; i++) {
+        const slot = player.inventory[i];
+        const div = document.createElement('div');
+        div.className = 'inventory-slot';
+        div.style.width = '60px';
+        div.style.height = '60px';
+        div.style.background = '#444'; // Slightly lighter background for hotbar
+        div.style.border = '2px solid #888'; // Lighter border for hotbar
+        div.style.borderRadius = '8px';
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.justifyContent = 'center';
+        div.style.position = 'relative';
+        div.setAttribute('draggable', 'true');
+        div.dataset.slotType = 'inventory';
+        div.dataset.slotIndex = i;
+        
+        // Add hotbar indicator
+        const hotbarLabel = document.createElement('div');
+        hotbarLabel.textContent = 'HOTBAR';
+        hotbarLabel.style.position = 'absolute';
+        hotbarLabel.style.top = '-20px';
+        hotbarLabel.style.left = '50%';
+        hotbarLabel.style.transform = 'translateX(-50%)';
+        hotbarLabel.style.color = '#888';
+        hotbarLabel.style.fontSize = '10px';
+        hotbarLabel.style.fontWeight = 'bold';
+        hotbarLabel.style.pointerEvents = 'none';
+        hotbarLabel.style.zIndex = '1';
+        div.appendChild(hotbarLabel);
+        
+        // Only show icon if count > 0
+        if (slot.type && slot.count > 0) {
+          if (slot.type === 'craftingTable') {
+            div.innerHTML += `<img src="craftingTable.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'chess') {
+            div.innerHTML += `<img src="chessClosed.png" style="width: 40px; height: 40px;">`;
+          } else {
+            let icon = '';
+            if (slot.type === 'rock') icon = '🪨';
+            else if (slot.type === 'wood') icon = '🪵';
+            else if (slot.type === 'sword') icon = '🗡️';
+            else if (slot.type === 'slingshot') icon = '🏹';
+            else if (slot.type === 'axe') icon = '🪓';
+            else icon = slot.type;
+            div.innerHTML += `<span style="font-size: 32px;">${icon}</span>`;
+          }
+          if (slot.count > 1) {
+            const countDiv = document.createElement('div');
+            countDiv.textContent = slot.count;
+            countDiv.style.position = 'absolute';
+            countDiv.style.right = '6px';
+            countDiv.style.bottom = '2px';
+            countDiv.style.color = '#fff';
+            countDiv.style.fontSize = '18px';
+            countDiv.style.textShadow = '1px 1px 2px #000';
+            div.appendChild(countDiv);
+          }
+        }
+        // Click handler for pick up/drop
+        div.onclick = function(e) {
+          handleInventoryClick({ slotType: 'inventory', index: i });
+        };
+        
+        // Drag and drop handlers
+        div.ondragstart = function(e) {
+          e.dataTransfer.setData('text/plain', JSON.stringify({ slotType: 'inventory', index: i }));
+        };
+        div.ondragover = function(e) { e.preventDefault(); };
+        div.ondrop = function(e) {
+          e.preventDefault();
+          const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+          handleInventoryDrop(data, { slotType: 'inventory', index: i });
+        };
         grid.appendChild(div);
       }
       // Crafting slots (just clear for now)
@@ -2717,7 +5030,15 @@
         const slot = player.crafting[i];
         const div = document.getElementById('craftingSlot' + i);
         div.innerHTML = '';
+        div.setAttribute('draggable', 'true');
+        div.dataset.slotType = 'crafting';
+        div.dataset.slotIndex = i;
         if (slot.type && slot.count > 0) {
+          if (slot.type === 'craftingTable') {
+            div.innerHTML = `<img src="craftingTable.png" style="width: 32px; height: 32px;">`;
+          } else if (slot.type === 'chess') {
+            div.innerHTML = `<img src="chessClosed.png" style="width: 32px; height: 32px;">`;
+          } else {
           let icon = '';
           if (slot.type === 'rock') icon = '🪨';
           else if (slot.type === 'wood') icon = '🪵';
@@ -2726,6 +5047,7 @@
           else if (slot.type === 'axe') icon = '🪓';
           else icon = slot.type;
           div.innerHTML = `<span style="font-size: 28px;">${icon}</span>`;
+          }
           if (slot.count > 1) {
             const countDiv = document.createElement('div');
             countDiv.textContent = slot.count;
@@ -2738,8 +5060,397 @@
             div.appendChild(countDiv);
           }
         }
+        // Click handler for pick up/drop
+        div.onclick = function(e) {
+          handleInventoryClick({ slotType: 'crafting', index: i });
+        };
+        
+        // Drag and drop handlers
+        div.ondragstart = function(e) {
+          e.dataTransfer.setData('text/plain', JSON.stringify({ slotType: 'crafting', index: i }));
+        };
+        div.ondragover = function(e) { e.preventDefault(); };
+        div.ondrop = function(e) {
+          e.preventDefault();
+          const data = JSON.parse(e.dataTransfer.getData('text/plain'));
+          handleInventoryDrop(data, { slotType: 'crafting', index: i });
+        };
+      }
+      
+      // Add crafting table recipe UI
+      const craftingAreaParent = document.querySelector('#craftingSlot3').parentElement;
+      let craftingResultDiv = document.getElementById('craftingResultDiv');
+      if (!craftingResultDiv) {
+        craftingResultDiv = document.createElement('div');
+        craftingResultDiv.id = 'craftingResultDiv';
+        craftingResultDiv.style.marginTop = '16px';
+        craftingResultDiv.style.display = 'flex';
+        craftingResultDiv.style.justifyContent = 'center';
+        craftingAreaParent.parentElement.appendChild(craftingResultDiv);
+      }
+      craftingResultDiv.innerHTML = '';
+      if (countWoodInCrafting() >= 4) {
+        const result = document.createElement('div');
+        result.style.width = '48px';
+        result.style.height = '48px';
+        result.style.background = '#222';
+        result.style.border = '2px solid #4CAF50';
+        result.style.borderRadius = '8px';
+        result.style.display = 'flex';
+        result.style.alignItems = 'center';
+        result.style.justifyContent = 'center';
+        result.style.cursor = 'pointer';
+        result.title = 'Craft Crafting Table (costs 4 wood)';
+        const img = document.createElement('img');
+        img.src = 'craftingTable.png';
+        img.style.width = '40px';
+        img.style.height = '40px';
+        result.appendChild(img);
+        result.onclick = handleCraftingTableClick;
+        craftingResultDiv.appendChild(result);
+      }
+      
+      // Render the mouse held item
+      renderMouseHeldItem();
+    }
+
+    // Handle inventory slot clicks (pick up/drop items)
+    function handleInventoryClick(slotInfo) {
+      let slot;
+      if (slotInfo.slotType === 'inventory') {
+        slot = player.inventory[slotInfo.index];
+      } else if (slotInfo.slotType === 'crafting') {
+        slot = player.crafting[slotInfo.index];
+      }
+      
+      // Pick up item
+      if (!mouseHeldItem && slot.type && slot.count > 0) {
+        mouseHeldItem = { type: slot.type, count: slot.count };
+        slot.type = null;
+        slot.count = 0;
+        renderInventoryUI();
+        renderMouseHeldItem();
+        
+        // Update weapon if hotbar slot was modified
+        if (slotInfo.slotType === 'inventory' && slotInfo.index >= 6) {
+          updateCurrentWeaponFromHotbar();
+        }
+      }
+      // Drop item
+      else if (mouseHeldItem) {
+        // If slot is empty
+        if (!slot.type || slot.count === 0) {
+          slot.type = mouseHeldItem.type;
+          slot.count = mouseHeldItem.count;
+          mouseHeldItem = null;
+          renderInventoryUI();
+          renderMouseHeldItem();
+          
+          // Update weapon if hotbar slot was modified
+          if (slotInfo.slotType === 'inventory' && slotInfo.index >= 6) {
+            updateCurrentWeaponFromHotbar();
+          }
+        }
+        // If same type and stackable
+        else if (slot.type === mouseHeldItem.type && slot.count < getMaxStackSize(slot.type)) {
+          let canAdd = getMaxStackSize(slot.type) - slot.count;
+          let toAdd = Math.min(canAdd, mouseHeldItem.count);
+          slot.count += toAdd;
+          mouseHeldItem.count -= toAdd;
+          if (mouseHeldItem.count <= 0) mouseHeldItem = null;
+          renderInventoryUI();
+          renderMouseHeldItem();
+          
+          // Update weapon if hotbar slot was modified
+          if (slotInfo.slotType === 'inventory' && slotInfo.index >= 6) {
+            updateCurrentWeaponFromHotbar();
+          }
+        }
       }
     }
+
+    // Drag-and-drop swap logic
+    function handleInventoryDrop(from, to) {
+      let fromSlot, toSlot;
+      if (from.slotType === 'inventory') fromSlot = player.inventory[from.index];
+      else fromSlot = player.crafting[from.index];
+      if (to.slotType === 'inventory') toSlot = player.inventory[to.index];
+      else toSlot = player.crafting[to.index];
+      // Swap type and count
+      const temp = { type: toSlot.type, count: toSlot.count };
+      toSlot.type = fromSlot.type;
+      toSlot.count = fromSlot.count;
+      fromSlot.type = temp.type;
+      fromSlot.count = temp.count;
+      
+      // Update current weapon based on selected hotbar slot
+      updateCurrentWeaponFromHotbar();
+      
+      renderInventoryUI();
+    }
+    
+    // Function to update current weapon based on selected hotbar slot
+    function updateCurrentWeaponFromHotbar() {
+      const selectedItem = player.inventory[6 + player.selectedHotbarSlot];
+      console.log('Updating weapon from hotbar:', {
+        selectedSlot: player.selectedHotbarSlot,
+        selectedItem: selectedItem,
+        oldWeapon: player.currentWeapon
+      });
+      if (selectedItem && selectedItem.type && selectedItem.count > 0) {
+        if (selectedItem.type === 'sword' || selectedItem.type === 'slingshot' || selectedItem.type === 'axe' || selectedItem.type === 'craftingTable' || selectedItem.type === 'chess') {
+          player.currentWeapon = selectedItem.type;
+          console.log('Set weapon to:', player.currentWeapon);
+        } else {
+          // Item is not a weapon, clear current weapon
+          player.currentWeapon = 'none';
+          console.log('Cleared weapon (non-weapon item):', selectedItem.type);
+        }
+      } else {
+        // Empty slot, clear current weapon
+        player.currentWeapon = 'none';
+        console.log('Cleared weapon (empty slot)');
+      }
+    }
+
+    // Utility: find slot for item type (stackable) or first empty slot
+    function findInventorySlot(type, stackable = true) {
+      const maxStack = getMaxStackSize(type);
+      // Try to stack first (only in main inventory, not hotbar)
+      if (stackable) {
+        for (let i = 0; i < 6; i++) { // Only check main inventory slots 0-5
+          if (player.inventory[i].type === type && player.inventory[i].count < maxStack) {
+            return i;
+          }
+        }
+      }
+      // Find first empty slot (main inventory first, then hotbar)
+      for (let i = 0; i < 6; i++) { // Main inventory first
+        if (!player.inventory[i].type || player.inventory[i].count === 0) return i;
+      }
+      for (let i = 6; i < 9; i++) { // Then hotbar
+        if (!player.inventory[i].type || player.inventory[i].count === 0) return i;
+      }
+      return -1; // No slot available
+    }
+
+    // Get max stack size for item type
+    function getMaxStackSize(type) {
+      if (type === 'sword' || type === 'slingshot' || type === 'axe' || type === 'chess') {
+        return 1; // Tools don't stack
+      }
+      return 16; // Resources stack to 16
+    }
+
+    // Get item from selected hotbar slot
+    function getSelectedHotbarItem() {
+      const slotIndex = 6 + player.selectedHotbarSlot;
+      return player.inventory[slotIndex];
+    }
+
+    // Check if player has item in hotbar
+    function hasItemInHotbar(type) {
+      // Check entire inventory (both main inventory and hotbar)
+      for (let i = 0; i < player.inventory.length; i++) {
+        if (player.inventory[i].type === type && player.inventory[i].count > 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Use item from hotbar (decrement count)
+    function useItemFromHotbar(type, amount = 1) {
+      for (let i = 6; i < 9; i++) {
+        if (player.inventory[i].type === type && player.inventory[i].count >= amount) {
+          player.inventory[i].count -= amount;
+          if (player.inventory[i].count <= 0) {
+            player.inventory[i].type = null;
+            player.inventory[i].count = 0;
+          }
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Draw hotbar (always visible at bottom of screen)
+    function drawHotbar() {
+      const hotbarY = canvas.height - 80;
+      const slotSize = 60;
+      const spacing = 10;
+      const totalWidth = 3 * slotSize + 2 * spacing;
+      const startX = (canvas.width - totalWidth) / 2;
+      
+      ctx.save();
+      // Draw hotbar background
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(startX - 10, hotbarY - 10, totalWidth + 20, slotSize + 20);
+      
+      // Draw slots
+      for (let i = 0; i < 3; i++) {
+        const slot = player.inventory[6 + i];
+        const x = startX + i * (slotSize + spacing);
+        const y = hotbarY;
+        
+        // Draw slot background
+        ctx.fillStyle = '#333';
+        ctx.fillRect(x, y, slotSize, slotSize);
+        
+        // Draw white outline only if this is the selected slot AND it has an item
+        if (i === player.selectedHotbarSlot && slot.type && slot.count > 0) {
+          ctx.strokeStyle = '#fff';
+          ctx.lineWidth = 3;
+        } else {
+        ctx.strokeStyle = '#666';
+        ctx.lineWidth = 2;
+        }
+        ctx.strokeRect(x, y, slotSize, slotSize);
+        
+        // Draw item
+        if (slot.type && slot.count > 0) {
+          if (slot.type === 'craftingTable') {
+            // Draw crafting table image
+            const craftingTableImg = new Image();
+            craftingTableImg.src = 'craftingTable.png';
+            if (craftingTableImg.complete) {
+              ctx.drawImage(craftingTableImg, x + 10, y + 10, slotSize - 20, slotSize - 20);
+            } else {
+              // Fallback if image not loaded
+              ctx.font = '16px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillStyle = '#fff';
+              ctx.fillText('CT', x + slotSize/2, y + slotSize/2 + 5);
+            }
+          } else if (slot.type === 'chess') {
+            // Draw chess image
+            const chessImg = new Image();
+            chessImg.src = 'chessClosed.png';
+            if (chessImg.complete) {
+              ctx.drawImage(chessImg, x + 10, y + 10, slotSize - 20, slotSize - 20);
+            } else {
+              // Fallback if image not loaded
+              ctx.font = '16px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillStyle = '#fff';
+              ctx.fillText('CH', x + slotSize/2, y + slotSize/2 + 5);
+            }
+          } else {
+          let icon = '';
+          if (slot.type === 'rock') icon = '🪨';
+          else if (slot.type === 'wood') icon = '🪵';
+          else if (slot.type === 'sword') icon = '🗡️';
+          else if (slot.type === 'slingshot') icon = '🏹';
+          else if (slot.type === 'axe') icon = '🪓';
+          else icon = slot.type;
+          
+          ctx.font = '32px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText(icon, x + slotSize/2, y + slotSize/2 + 10);
+          }
+          
+          // Draw count
+          if (slot.count > 1) {
+            ctx.font = '16px Arial';
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'right';
+            ctx.fillText(slot.count.toString(), x + slotSize - 5, y + slotSize - 5);
+          }
+        }
+        
+        // Draw slot number
+        ctx.font = '14px Arial';
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText((i + 1).toString(), x + slotSize/2, y + slotSize + 15);
+      }
+      ctx.restore();
+    }
+
+    // --- Add after renderInventoryUI function ---
+    function renderMouseHeldItem() {
+      let held = document.getElementById('mouseHeldItem');
+      if (!held) {
+        held = document.createElement('div');
+        held.id = 'mouseHeldItem';
+        held.style.position = 'fixed';
+        held.style.pointerEvents = 'none';
+        held.style.zIndex = 9999;
+        document.body.appendChild(held);
+      }
+      if (mouseHeldItem) {
+        if (mouseHeldItem.type === 'chess') {
+          held.innerHTML = `<img src="chessClosed.png" style="width:32px;height:32px;">` +
+            (mouseHeldItem.count > 1 ? `<span style="color:#fff;font-size:16px;position:absolute;right:0;bottom:0;">${mouseHeldItem.count}</span>` : '');
+        } else {
+          let icon = '';
+          if (mouseHeldItem.type === 'rock') icon = '🪨';
+          else if (mouseHeldItem.type === 'wood') icon = '🪵';
+          else if (mouseHeldItem.type === 'sword') icon = '🗡️';
+          else if (mouseHeldItem.type === 'slingshot') icon = '🏹';
+          else if (mouseHeldItem.type === 'axe') icon = '🪓';
+          else icon = mouseHeldItem.type;
+          held.innerHTML = `<span style="font-size:32px">${icon}</span>` +
+            (mouseHeldItem.count > 1 ? `<span style="color:#fff;font-size:16px;position:absolute;right:0;bottom:0;">${mouseHeldItem.count}</span>` : '');
+        }
+        held.style.display = 'block';
+      } else {
+        held.style.display = 'none';
+      }
+    }
+    document.addEventListener('mousemove', function(e) {
+      let held = document.getElementById('mouseHeldItem');
+      if (held && mouseHeldItem) {
+        held.style.left = (e.clientX + 8) + 'px';
+        held.style.top = (e.clientY + 8) + 'px';
+      }
+    });
+    // ... existing code ...
+    // In renderInventoryUI, add click handler to each slot:
+    // ... inside for (let i = 0; i < 6; i++) { ... and for (let i = 6; i < 9; i++) { ...
+    div.onclick = function(e) {
+      // Pick up
+      if (!mouseHeldItem && slot.type && slot.count > 0) {
+        mouseHeldItem = { type: slot.type, count: slot.count };
+        slot.type = null;
+        slot.count = 0;
+        renderInventoryUI();
+        renderMouseHeldItem();
+      }
+      // Drop
+      else if (mouseHeldItem) {
+        // If slot is empty
+        if (!slot.type || slot.count === 0) {
+          slot.type = mouseHeldItem.type;
+          slot.count = mouseHeldItem.count;
+          mouseHeldItem = null;
+          renderInventoryUI();
+          renderMouseHeldItem();
+        }
+        // If same type and stackable
+        else if (slot.type === mouseHeldItem.type && slot.count < getMaxStackSize(slot.type)) {
+          let canAdd = getMaxStackSize(slot.type) - slot.count;
+          let toAdd = Math.min(canAdd, mouseHeldItem.count);
+          slot.count += toAdd;
+          mouseHeldItem.count -= toAdd;
+          if (mouseHeldItem.count <= 0) mouseHeldItem = null;
+          renderInventoryUI();
+          renderMouseHeldItem();
+        }
+      }
+    };
+    // ... existing code ...
+    // In renderInventoryUI, after updating the grid, call renderMouseHeldItem();
+    // ... existing code ...
+    // When closing inventory, clear held item and hide
+    if (!inventoryOpen) {
+      mouseHeldItem = null;
+      let held = document.getElementById('mouseHeldItem');
+      if (held) held.style.display = 'none';
+    }
+    // ... existing code ...
+
+
   </script>
 </body>
 </html> 
