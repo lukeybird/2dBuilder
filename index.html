@@ -139,6 +139,7 @@
       hasSword: false, // sword pickup status
       hasSlingshot: false, // slingshot pickup status
       hasAxe: false, // axe pickup status
+      hasHammer: false, // hammer pickup status
       currentWeapon: 'none', // 'sword', 'slingshot', 'axe', or 'none'
       swordAnimation: 0, // sword swing animation (0 = not swinging)
       swordCooldown: 0, // cooldown between sword swings
@@ -148,6 +149,9 @@
       punchAnimation: 0, // punch animation (0 = not punching)
       punchCooldown: 0, // cooldown between punches
       lastPunchHand: 'right', // track which hand was used last for alternating
+      hammerAnimation: 0, // hammer swing animation (0 = not swinging)
+      hammerCooldown: 0, // cooldown between hammer swings
+      hammerRotation: 0, // hammer rotation angle in radians
       health: 3, // player health (3 hearts)
       maxHealth: 3, // player max health
       invulnerabilityTime: 0, // invulnerability after being hit
@@ -211,6 +215,8 @@
     enemyImg.src = 'enemy.png';
     const roofImg = new Image();
     roofImg.src = 'tile.png';
+    const roofTileImg = new Image();
+    roofTileImg.src = 'tile.png';
     const slingShotImg = new Image();
     slingShotImg.src = 'slingShot.png';
     const rockImg = new Image();
@@ -219,6 +225,8 @@
     boulderImg.src = 'boulder.png';
     const axeImg = new Image();
     axeImg.src = 'axe.png';
+    const hammerImg = new Image();
+    hammerImg.src = 'hammer.png';
     // Add blueHeartImg loading
     const blueHeartImg = new Image();
     blueHeartImg.src = 'blueHeart.png';
@@ -323,7 +331,10 @@
     
     // Crafting table health tracking
     let craftingTableHealth = new Map(); // Maps "row,col" to health value
-let chessHealth = new Map(); // Maps "row,col" to health value
+    let chessHealth = new Map(); // Maps "row,col" to health value
+    // Boulder health tracking
+    let boulderHealth = new Map(); // Maps "row,col" to health value
+    let boulderCooldown = new Map(); // Maps "row,col" to cooldown frames
 let chessCooldown = new Map(); // Maps "row,col" to cooldown frames
 let chessItems = []; // Array to track dropped chess items
 let chessStorage = new Map(); // Maps "row,col" to storage array
@@ -356,8 +367,8 @@ let craftingTables = []; // Array to track dropped crafting table items
       }
       
       const cell = worldData[row][col];
-      // X (brick walls), W (water), B (bushes as item), O (boulders as item), T (trees as item), C (crafting tables as item), and H (chess as item) cause collision, everything else is walkable
-      return cell.base === 'X' || cell.base === 'W' || cell.item === 'B' || cell.item === 'O' || cell.item === 'T' || cell.item === 'C' || cell.item === 'H';
+      // X (brick walls), W (water), B (bushes as item), O (boulders as item), T (trees as item), C (crafting tables as item), H (chess as item), and R (roof tiles as item) cause collision, everything else is walkable
+      return cell.base === 'X' || cell.base === 'W' || cell.item === 'B' || cell.item === 'O' || cell.item === 'T' || cell.item === 'C' || cell.item === 'H' || cell.item === 'R';
     }
 
     function isCircleOverlap(x1, y1, r1, x2, y2, r2) {
@@ -646,6 +657,166 @@ let craftingTables = []; // Array to track dropped crafting table items
       });
     }
 
+    // Boulder health management functions
+    function getBoulderHealth(row, col) {
+      const key = `${row},${col}`;
+      return boulderHealth.get(key) || 12; // Default to 12 health
+    }
+
+    function setBoulderHealth(row, col, health) {
+      const key = `${row},${col}`;
+      if (health <= 0) {
+        boulderHealth.delete(key);
+        // Remove boulder from world
+        worldData[row][col].item = null;
+        
+        // Spawn rocks based on probability
+        const rand = Math.random();
+        let rockCount = 0;
+        if (rand < 0.5) {
+          rockCount = 0; // 50% chance for 0 rocks
+        } else if (rand < 0.75) {
+          rockCount = 1; // 25% chance for 1 rock
+        } else {
+          rockCount = 3; // 25% chance for 3 rocks
+        }
+        
+        // Spawn the rocks
+        for (let i = 0; i < rockCount; i++) {
+          rocks.push({
+            x: col * TILE_SIZE + TILE_SIZE / 2 + (Math.random() - 0.5) * 20,
+            y: row * TILE_SIZE + TILE_SIZE / 2 + (Math.random() - 0.5) * 20,
+            baseX: col * TILE_SIZE + TILE_SIZE / 2,
+            baseY: row * TILE_SIZE + TILE_SIZE / 2,
+            vy: -5 - Math.random() * 2,
+            t: 0,
+            collected: false
+          });
+        }
+      } else {
+        boulderHealth.set(key, health);
+      }
+    }
+
+    function damageBoulder(row, col, damage = 1) {
+      const key = `${row},${col}`;
+      // If on cooldown, do nothing
+      if (boulderCooldown.get(key) > 0) return;
+      const currentHealth = getBoulderHealth(row, col);
+      
+      // Chance to drop rocks on every hit (not just when destroyed)
+      const rand = Math.random();
+      let rockCount = 0;
+      if (rand < 0.5) {
+        rockCount = 0; // 50% chance for 0 rocks
+      } else if (rand < 0.75) {
+        rockCount = 2; // 25% chance for 2 rocks
+      } else {
+        rockCount = 4; // 25% chance for 4 rocks
+      }
+      
+      // Spawn the rocks
+      for (let i = 0; i < rockCount; i++) {
+        rocks.push({
+          x: col * TILE_SIZE + TILE_SIZE / 2 + (Math.random() - 0.5) * 20,
+          y: row * TILE_SIZE + TILE_SIZE / 2 + (Math.random() - 0.5) * 20,
+          baseX: col * TILE_SIZE + TILE_SIZE / 2,
+          baseY: row * TILE_SIZE + TILE_SIZE / 2,
+          vy: -5 - Math.random() * 2,
+          t: 0,
+          collected: false
+        });
+      }
+      
+      setBoulderHealth(row, col, currentHealth - damage);
+      // Set cooldown to 30 frames (0.5 seconds)
+      boulderCooldown.set(key, 30);
+    }
+
+    function populateChessWithItems(storage) {
+      // Helper function to find first empty slot
+      function findEmptySlot() {
+        for (let i = 0; i < storage.length; i++) {
+          if (!storage[i].type || storage[i].count === 0) {
+            return i;
+          }
+        }
+        return -1; // No empty slots
+      }
+      
+      // Helper function to add item to storage
+      function addItem(type, count) {
+        const slot = findEmptySlot();
+        if (slot !== -1) {
+          storage[slot].type = type;
+          storage[slot].count = count;
+          return true;
+        }
+        return false; // Storage is full
+      }
+      
+      // Check each chance and add items if successful
+      // 1% chance of having 16 rocks
+      if (Math.random() < 0.01) {
+        if (!addItem('rock', 16)) return; // Stop if full
+      }
+      
+      // 1% chance of having 16 wood
+      if (Math.random() < 0.01) {
+        if (!addItem('wood', 16)) return; // Stop if full
+      }
+      
+      // 15% chance of having a sword
+      if (Math.random() < 0.15) {
+        if (!addItem('sword', 1)) return; // Stop if full
+      }
+      
+      // 5% chance of having an axe
+      if (Math.random() < 0.05) {
+        if (!addItem('axe', 1)) return; // Stop if full
+      }
+      
+      // 50% chance of having 1 wood
+      if (Math.random() < 0.50) {
+        if (!addItem('wood', 1)) return; // Stop if full
+      }
+      
+      // 50% chance of having 1 rock
+      if (Math.random() < 0.50) {
+        if (!addItem('rock', 1)) return; // Stop if full
+      }
+      
+      // 30% chance of having 3 rocks
+      if (Math.random() < 0.30) {
+        if (!addItem('rock', 3)) return; // Stop if full
+      }
+      
+      // 30% chance of having 3 wood
+      if (Math.random() < 0.30) {
+        if (!addItem('wood', 3)) return; // Stop if full
+      }
+      
+      // 10% chance of having 5 wood
+      if (Math.random() < 0.10) {
+        if (!addItem('wood', 5)) return; // Stop if full
+      }
+      
+      // 10% chance of having 5 wood (duplicate entry - keeping as specified)
+      if (Math.random() < 0.10) {
+        if (!addItem('wood', 5)) return; // Stop if full
+      }
+      
+      // 5% chance of having an axe (duplicate entry - keeping as specified)
+      if (Math.random() < 0.05) {
+        if (!addItem('axe', 1)) return; // Stop if full
+      }
+      
+      // 10% chance of having a slingshot
+      if (Math.random() < 0.10) {
+        if (!addItem('slingshot', 1)) return; // Stop if full
+      }
+    }
+
     function spawnCraftingTable(x, y) {
       craftingTables.push({
         x: x,
@@ -684,6 +855,15 @@ let craftingTables = []; // Array to track dropped crafting table items
           craftingTableCooldown.set(key, cooldown - 1);
         } else {
           craftingTableCooldown.delete(key);
+        }
+      }
+      
+      // Update boulder cooldowns
+      for (const [key, cooldown] of boulderCooldown.entries()) {
+        if (cooldown > 0) {
+          boulderCooldown.set(key, cooldown - 1);
+        } else {
+          boulderCooldown.delete(key);
         }
       }
       
@@ -954,7 +1134,10 @@ let craftingTables = []; // Array to track dropped crafting table items
                 // Initialize chess health and storage
                 const key = `${gridRow},${gridCol}`;
                 chessHealth.set(key, 2);
-                chessStorage.set(key, Array(12).fill().map(() => ({ type: null, count: 0 })));
+                const storage = Array(12).fill().map(() => ({ type: null, count: 0 }));
+                chessStorage.set(key, storage);
+                
+                // Note: Newly placed chess pieces are empty - only world-generated chess pieces have items
                 
                 // Remove one chess from inventory
                 selectedItem.count--;
@@ -998,6 +1181,246 @@ let craftingTables = []; // Array to track dropped crafting table items
         }
         if (player.axeCooldown > 0) {
           player.axeCooldown--;
+        }
+      } else if (player.currentWeapon === 'plank') {
+        // Plank placement logic
+        if (keys[' '] && player.slingshotCooldown <= 0) {
+          console.log('=== PLANK PLACEMENT ATTEMPT ===');
+          
+          // Check if plank is in selected hotbar slot
+          const selectedSlot = 6 + player.selectedHotbarSlot;
+          const selectedItem = player.inventory[selectedSlot];
+          console.log('Selected slot:', selectedSlot, 'Item:', selectedItem);
+          
+          // Place plank if we have one in selected slot
+          if (selectedItem && selectedItem.type === 'plank' && selectedItem.count > 0) {
+            console.log('PLACING PLANK!');
+            
+            // Calculate position in front of player (next tile away)
+            const playerCol = Math.floor(player.x / TILE_SIZE);
+            const playerRow = Math.floor(player.y / TILE_SIZE);
+            
+            // Calculate the next tile in the direction the player is facing
+            const gridCol = playerCol + Math.round(Math.cos(player.angle));
+            const gridRow = playerRow + Math.round(Math.sin(player.angle));
+            
+            // Convert back to world coordinates for logging
+            const placeX = gridCol * TILE_SIZE + TILE_SIZE / 2;
+            const placeY = gridRow * TILE_SIZE + TILE_SIZE / 2;
+            
+            console.log('Placing at grid position:', gridCol, gridRow);
+            console.log('World position:', placeX, placeY);
+            
+            // Check if position is valid (within bounds and not already occupied)
+            if (gridRow >= 0 && gridRow < worldData.length && 
+                gridCol >= 0 && gridCol < worldData[0].length) {
+              
+              const cell = worldData[gridRow][gridCol];
+              if (!cell.item && cell.base !== 'X' && cell.base !== 'W') {
+                // Place the plank
+                cell.base = 'O'; // Use 'O' for plank base
+                console.log('Plank placed successfully!');
+                
+                // Remove one plank from inventory
+                selectedItem.count--;
+                if (selectedItem.count <= 0) {
+                  selectedItem.type = null;
+                  selectedItem.count = 0;
+                }
+                
+                // Set cooldown
+                player.slingshotCooldown = 20;
+                
+                // Switch back to normal hands after 0.5 seconds (30 frames at 60fps)
+                setTimeout(() => {
+                  player.currentWeapon = 'none';
+                }, 500);
+              } else {
+                console.log('Cannot place plank - position occupied or invalid');
+              }
+            } else {
+              console.log('Cannot place plank - out of bounds');
+            }
+          } else {
+            console.log('No plank in selected slot:', selectedItem);
+          }
+        }
+        
+        // Update cooldown
+        if (player.slingshotCooldown > 0) {
+          player.slingshotCooldown--;
+        }
+      } else if (player.currentWeapon === 'brick') {
+        // Brick placement logic
+        if (keys[' '] && hasItemInHotbar('brick')) {
+          // Check if brick is in selected hotbar slot
+          const selectedSlot = 6 + player.selectedHotbarSlot;
+          const selectedItem = player.inventory[selectedSlot];
+          console.log('Selected slot:', selectedSlot, 'Item:', selectedItem);
+          
+          // Place brick if we have one in selected slot
+          if (selectedItem && selectedItem.type === 'brick' && selectedItem.count > 0) {
+            console.log('PLACING BRICK!');
+            
+            // Calculate position in front of player (next tile away)
+            const playerCol = Math.floor(player.x / TILE_SIZE);
+            const playerRow = Math.floor(player.y / TILE_SIZE);
+            
+            // Calculate the next tile in the direction the player is facing
+            const gridCol = playerCol + Math.round(Math.cos(player.angle));
+            const gridRow = playerRow + Math.round(Math.sin(player.angle));
+            
+            // Convert back to world coordinates for logging
+            const placeX = gridCol * TILE_SIZE + TILE_SIZE / 2;
+            const placeY = gridRow * TILE_SIZE + TILE_SIZE / 2;
+            
+            console.log('Placing at grid position:', gridCol, gridRow);
+            console.log('World position:', placeX, placeY);
+            
+            // Check if position is valid (within bounds and not already occupied)
+            if (gridRow >= 0 && gridRow < worldData.length && 
+                gridCol >= 0 && gridCol < worldData[0].length) {
+              
+              const cell = worldData[gridRow][gridCol];
+              if (!cell.item && cell.base !== 'X' && cell.base !== 'W') {
+                // Place brick
+                cell.base = 'X'; // Brick wall
+                
+                // Remove one brick from inventory
+                selectedItem.count--;
+                if (selectedItem.count <= 0) {
+                  selectedItem.type = null;
+                  selectedItem.count = 0;
+                  // Clear current weapon if no more bricks
+                  player.currentWeapon = 'none';
+                }
+                
+                console.log('Brick placed successfully!');
+                
+                // Auto-switch back to normal hands after 0.5 seconds
+                setTimeout(() => {
+                  if (player.currentWeapon === 'brick') {
+                    player.currentWeapon = 'none';
+                  }
+                }, 500);
+              } else {
+                console.log('Cannot place brick - position occupied or invalid');
+              }
+            } else {
+              console.log('Cannot place brick - out of bounds');
+            }
+          } else {
+            console.log('No brick in selected slot:', selectedItem);
+          }
+        }
+        
+        // Update cooldown
+        if (player.slingshotCooldown > 0) {
+          player.slingshotCooldown--;
+        }
+      } else if (player.currentWeapon === 'roof') {
+        // Roof placement logic
+        if (keys[' '] && hasItemInHotbar('roof')) {
+          // Check if roof is in selected hotbar slot
+          const selectedSlot = 6 + player.selectedHotbarSlot;
+          const selectedItem = player.inventory[selectedSlot];
+          console.log('Selected slot:', selectedSlot, 'Item:', selectedItem);
+          
+          // Place roof if we have one in selected slot
+          if (selectedItem && selectedItem.type === 'roof' && selectedItem.count > 0) {
+            console.log('PLACING ROOF!');
+            
+            // Calculate position in front of player (next tile away)
+            const playerCol = Math.floor(player.x / TILE_SIZE);
+            const playerRow = Math.floor(player.y / TILE_SIZE);
+            
+            // Calculate the next tile in the direction the player is facing
+            const gridCol = playerCol + Math.round(Math.cos(player.angle));
+            const gridRow = playerRow + Math.round(Math.sin(player.angle));
+            
+            // Convert back to world coordinates for logging
+            const placeX = gridCol * TILE_SIZE + TILE_SIZE / 2;
+            const placeY = gridRow * TILE_SIZE + TILE_SIZE / 2;
+            
+            console.log('Placing at grid position:', gridCol, gridRow);
+            console.log('World position:', placeX, placeY);
+            
+            // Check if position is valid (within bounds and not already occupied)
+            if (gridRow >= 0 && gridRow < worldData.length && 
+                gridCol >= 0 && gridCol < worldData[0].length) {
+              
+              const cell = worldData[gridRow][gridCol];
+              console.log('Cell at placement position:', cell);
+              // Allow placing roofs on empty tiles or non-collision items (wood, heart, sword, enemies, axe)
+              const nonCollisionItems = ['W', 'L', 'S', 'E', 'Z', 'M', 'A'];
+              if ((!cell.item || nonCollisionItems.includes(cell.item)) && cell.base !== 'W') {
+                // Place roof (can be placed on any surface except water)
+                cell.item = 'R'; // Roof tile
+                console.log('Roof placed! Cell now:', cell);
+                
+                // Remove one roof from inventory
+                selectedItem.count--;
+                if (selectedItem.count <= 0) {
+                  selectedItem.type = null;
+                  selectedItem.count = 0;
+                  // Clear current weapon if no more roofs
+                  player.currentWeapon = 'none';
+                }
+                
+                console.log('Roof placed successfully!');
+                
+                // Auto-switch back to normal hands after 0.5 seconds
+                setTimeout(() => {
+                  if (player.currentWeapon === 'roof') {
+                    player.currentWeapon = 'none';
+                  }
+                }, 500);
+              } else {
+                console.log('Cannot place roof - position occupied or invalid');
+              }
+            } else {
+              console.log('Cannot place roof - out of bounds');
+            }
+          } else {
+            console.log('No roof in selected slot:', selectedItem);
+          }
+        }
+        
+        // Update cooldown
+        if (player.slingshotCooldown > 0) {
+          player.slingshotCooldown--;
+        }
+      } else if (player.currentWeapon === 'hammer') {
+        // Hammer attack logic
+        if (keys[' '] && hasItemInHotbar('hammer') && player.hammerCooldown <= 0) {
+          // Check if hammer has durability
+          const selectedSlot = 6 + player.selectedHotbarSlot;
+          const hammerSlot = player.inventory[selectedSlot];
+          if (hammerSlot && hammerSlot.type === 'hammer' && hammerSlot.durability > 0) {
+            player.hammerAnimation = 1.0; // Start hammer swing
+            player.hammerCooldown = 60; // 60 frames cooldown (1 second)
+            player.hammerRotation = 0; // Reset rotation
+          }
+        }
+        
+        // Update hammer animation
+        if (player.hammerAnimation > 0) {
+          player.hammerAnimation -= 0.016; // Slow animation (1 second total)
+          if (player.hammerAnimation < 0) player.hammerAnimation = 0;
+          
+          // Update rotation (90 degrees = π/2 radians over 1 second)
+          player.hammerRotation = (1 - player.hammerAnimation) * Math.PI / 2;
+          
+          // Check for hammer hit during thrust phase (last 0.05 seconds)
+          const animationProgress = 1 - player.hammerAnimation;
+          if (animationProgress > 0.95) {
+            checkHammerHit();
+          }
+        }
+        
+        // Update cooldown
+        if (player.hammerCooldown > 0) {
+          player.hammerCooldown--;
         }
       } else if (player.currentWeapon === 'none') {
         // Handle punching when no weapon is held
@@ -1471,15 +1894,35 @@ let craftingTables = []; // Array to track dropped crafting table items
           const localY = relX * perpX + relY * perpY;
           if (Math.abs(localX) <= rectLength / 2 && Math.abs(localY) <= rectWidth / 2) {
             // Place plank on water if player has enough wood
-            let woodSlot = findInventorySlot('wood', true);
-            if (!plankPlaced && worldData[row][col].base === 'W' && woodSlot !== -1 && player.inventory[woodSlot].count >= 4) {
-              worldData[row][col].base = 'O'; // Plank
-              player.inventory[woodSlot].count -= 4;
-              if (player.inventory[woodSlot].count <= 0) {
-                player.inventory[woodSlot].type = null;
-                player.inventory[woodSlot].count = 0;
+            if (!plankPlaced && worldData[row][col].base === 'W') {
+              // Count total wood across all inventory slots
+              let totalWood = 0;
+              for (let i = 0; i < player.inventory.length; i++) {
+                if (player.inventory[i].type === 'wood') {
+                  totalWood += player.inventory[i].count;
+                }
               }
+              
+              if (totalWood >= 4) {
+              worldData[row][col].base = 'O'; // Plank
+                
+                // Deduct 4 wood from inventory, starting from the first wood slot
+                let woodNeeded = 4;
+                for (let i = 0; i < player.inventory.length && woodNeeded > 0; i++) {
+                  if (player.inventory[i].type === 'wood' && player.inventory[i].count > 0) {
+                    let canTake = Math.min(player.inventory[i].count, woodNeeded);
+                    player.inventory[i].count -= canTake;
+                    woodNeeded -= canTake;
+                    
+                    if (player.inventory[i].count <= 0) {
+                      player.inventory[i].type = null;
+                      player.inventory[i].count = 0;
+                    }
+                  }
+                }
+                
               plankPlaced = true;
+              }
             }
             if (worldData[row][col].item === 'T') {
               damageTree(row, col, 1);
@@ -1509,6 +1952,145 @@ let craftingTables = []; // Array to track dropped crafting table items
         timer: 15,
         maxTimer: 15
       });
+    }
+
+    function checkHammerHit() {
+      if (!hasItemInHotbar('hammer')) return;
+      
+      // Get hammer slot and check durability
+      const selectedSlot = 6 + player.selectedHotbarSlot;
+      const hammerSlot = player.inventory[selectedSlot];
+      if (!hammerSlot || hammerSlot.type !== 'hammer' || hammerSlot.durability <= 0) return;
+      
+      // Hammer hitbox - small circular area in front during thrust
+      const animationProgress = 1 - player.hammerAnimation;
+      const thrustProgress = (animationProgress - 0.95) / 0.05; // 0 to 1 over last 0.05 seconds
+      
+      // Calculate hammer position during thrust
+      const baseDistance = player.radius + 20; // Closer base distance from player
+      const thrustDistance = thrustProgress * 60; // Additional thrust distance
+      const totalDistance = baseDistance + thrustDistance;
+      
+      // Hammer hitbox center
+      const hitX = player.x + Math.cos(player.angle) * totalDistance;
+      const hitY = player.y + Math.sin(player.angle) * totalDistance;
+      const hitRadius = 1; // Tiny pinpoint hitbox
+      
+      // Check enemies in the hitbox
+      for (let i = enemies.length - 1; i >= 0; i--) {
+        const enemy = enemies[i];
+        const dx = enemy.x - hitX;
+        const dy = enemy.y - hitY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance <= hitRadius + enemy.radius) {
+          // Deal 2 damage to enemy
+          enemy.health -= 2;
+          
+          // Create damage animation
+          damageAnimations.push({
+            x: enemy.x,
+            y: enemy.y,
+            damage: 2,
+            timer: 30,
+            maxTimer: 30
+          });
+          
+          // Knockback effect
+          const knockbackForce = 8;
+          enemy.vx += (dx / distance) * knockbackForce;
+          enemy.vy += (dy / distance) * knockbackForce;
+          
+          // Stun enemy briefly
+          enemy.stunned = true;
+          enemy.stunTimer = 20;
+          
+          // Remove enemy if health <= 0
+          if (enemy.health <= 0) {
+            enemies.splice(i, 1);
+          }
+          
+          // Consume durability when hitting enemies
+          hammerSlot.durability--;
+          if (hammerSlot.durability <= 0) {
+            // Hammer is broken, remove it
+            hammerSlot.type = null;
+            hammerSlot.count = 0;
+            hammerSlot.durability = 0;
+            // Clear current weapon if it was the hammer
+            if (player.currentWeapon === 'hammer') {
+              player.currentWeapon = 'none';
+            }
+          }
+        }
+      }
+      
+      // Check for world objects (trees, crafting tables, chess, etc.)
+      const hitCol = Math.floor(hitX / TILE_SIZE);
+      const hitRow = Math.floor(hitY / TILE_SIZE);
+      
+      if (hitRow >= 0 && hitRow < worldData.length && hitCol >= 0 && hitCol < worldData[0].length) {
+        const cell = worldData[hitRow][hitCol];
+        
+        let hitSomething = false;
+        
+        if (cell.item === 'T') {
+          damageTree(hitRow, hitCol, 2); // Hammer does 2 damage to trees
+          hitSomething = true;
+        } else if (cell.item === 'C') {
+          damageCraftingTable(hitRow, hitCol, 2); // Hammer does 2 damage to crafting tables
+          hitSomething = true;
+        } else if (cell.item === 'H') {
+          damageChess(hitRow, hitCol, 2); // Hammer does 2 damage to chess pieces
+          hitSomething = true;
+        } else if (cell.item === 'O') {
+          damageBoulder(hitRow, hitCol, 2); // Hammer does 2 damage to boulders
+          hitSomething = true;
+        } else if (cell.item === 'B') {
+          // Destroy bushes instantly
+          cell.item = null;
+          hitSomething = true;
+          // 10% chance to drop a heart
+          if (Math.random() < 0.1) {
+            hearts.push({
+              x: hitCol * TILE_SIZE + TILE_SIZE / 2,
+              y: hitRow * TILE_SIZE + TILE_SIZE / 2,
+              baseX: hitCol * TILE_SIZE + TILE_SIZE / 2,
+              baseY: hitRow * TILE_SIZE + TILE_SIZE / 2,
+              vy: -6 - Math.random() * 2,
+              t: 0,
+              collected: false
+            });
+          }
+          // 40% chance to drop a rock
+          if (Math.random() < 0.4) {
+            rocks.push({
+              x: hitCol * TILE_SIZE + TILE_SIZE / 2,
+              y: hitRow * TILE_SIZE + TILE_SIZE / 2,
+              baseX: hitCol * TILE_SIZE + TILE_SIZE / 2,
+              baseY: hitRow * TILE_SIZE + TILE_SIZE / 2,
+              vy: -5 - Math.random() * 2,
+              t: 0,
+              collected: false
+            });
+          }
+        }
+        
+        // Consume durability if hammer hit something
+        if (hitSomething) {
+          hammerSlot.durability--;
+          if (hammerSlot.durability <= 0) {
+            // Hammer is broken, remove it
+            hammerSlot.type = null;
+            hammerSlot.count = 0;
+            hammerSlot.durability = 0;
+            // Clear current weapon if it was the hammer
+            if (player.currentWeapon === 'hammer') {
+              player.currentWeapon = 'none';
+            }
+          }
+        }
+      }
     }
 
     function drawPlayer(x, y) {
@@ -1671,6 +2253,63 @@ let craftingTables = []; // Array to track dropped crafting table items
         ctx.shadowBlur = 5;
         ctx.fill();
         ctx.restore();
+      } else if (player.currentWeapon === 'hammer' && hasItemInHotbar('hammer')) {
+        // Draw right hand in normal position
+        ctx.beginPath();
+        ctx.arc(player.radius + 8, 0, 8, 0, Math.PI * 2);
+        ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff'; // Gray when dead
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        
+        // Draw left hand following hammer animation
+        ctx.save();
+        ctx.rotate(Math.PI / 2); // align with hammer direction
+        
+        if (player.hammerAnimation > 0) {
+          // Animated hand - follows hammer movement
+          const animationProgress = 1 - player.hammerAnimation;
+          
+          // Phase 1: Move from hand to center with 90-degree rotation (0 to 0.95 seconds)
+          let handOffset = 0;
+          let rotation = 0;
+          if (animationProgress <= 0.95) {
+            const moveProgress = animationProgress / 0.95; // 0 to 1 over 0.95 seconds
+            handOffset = (1 - moveProgress) * 5; // Start 5 pixels to the side, move to center
+            rotation = moveProgress * Math.PI / 2; // Rotate 90 degrees (π/2 radians)
+          }
+          
+          // Phase 2: Forward thrust (0.95 to 1.0 seconds - 0.05 seconds)
+          let thrustDistance = 0;
+          if (animationProgress > 0.95) {
+            const thrustProgress = (animationProgress - 0.95) / 0.05; // 0 to 1 over 0.05 seconds
+            thrustDistance = thrustProgress * 60; // 60 pixels forward thrust
+          }
+          
+          // Apply hand offset, rotation, and thrust
+          ctx.translate(handOffset, 0);
+          ctx.rotate(rotation);
+          ctx.translate(thrustDistance, 0);
+          
+          // Draw hand at hammer position
+          ctx.beginPath();
+          ctx.arc(player.radius - 5, 0, 8, 0, Math.PI * 2); // Closer to body
+          ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 5;
+        ctx.fill();
+        } else {
+          // Normal hammer position (in hand)
+          ctx.translate(5, 0); // Much reduced hand offset to move very close to center
+          ctx.beginPath();
+          ctx.arc(player.radius - 5, 0, 8, 0, Math.PI * 2); // Closer to body
+          ctx.fillStyle = player.health <= 0 ? '#95a5a6' : '#ffffff';
+          ctx.shadowColor = '#000';
+          ctx.shadowBlur = 5;
+          ctx.fill();
+        }
+        
+        ctx.restore();
       } else {
         // Default hand positions
       // Draw left hand
@@ -1814,6 +2453,160 @@ let craftingTables = []; // Array to track dropped crafting table items
           ctx.fillRect(player.radius + 10, -15, 8, 30); // base
           ctx.fillStyle = '#654321';
           ctx.fillRect(player.radius + 18, -12, 20, 24); // piece
+        }
+      } else if (player.currentWeapon === 'plank' && hasItemInHotbar('plank')) {
+        // Draw plank in hand
+        if (plankImg.complete) {
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          ctx.drawImage(plankImg, player.radius + 2, -20, 40, 40); // same size as other items
+          ctx.restore();
+        } else {
+          // Fallback: draw a simple plank
+          ctx.fillStyle = '#8B4513';
+          ctx.fillRect(player.radius + 10, -15, 8, 30); // plank shape
+          ctx.fillStyle = '#654321';
+          ctx.fillRect(player.radius + 18, -12, 20, 24); // plank texture
+        }
+      } else if (player.currentWeapon === 'brick' && hasItemInHotbar('brick')) {
+        // Draw brick in hand
+        if (brickImg.complete) {
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          ctx.drawImage(brickImg, player.radius + 2, -20, 40, 40); // same size as other items
+          ctx.restore();
+        } else {
+          // Fallback: draw a simple brick
+          ctx.fillStyle = '#8B4513';
+          ctx.fillRect(player.radius + 10, -15, 8, 30); // brick shape
+          ctx.fillStyle = '#654321';
+          ctx.fillRect(player.radius + 18, -12, 20, 24); // brick texture
+        }
+      } else if (player.currentWeapon === 'roof' && hasItemInHotbar('roof')) {
+        // Draw roof in hand
+        if (roofTileImg.complete) {
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          ctx.drawImage(roofTileImg, player.radius + 2, -20, 40, 40); // same size as other items
+          ctx.restore();
+        } else {
+          // Fallback: draw a simple roof
+          ctx.fillStyle = '#8B4513';
+          ctx.fillRect(player.radius + 10, -15, 8, 30); // roof shape
+          ctx.fillStyle = '#654321';
+          ctx.fillRect(player.radius + 18, -12, 20, 24); // roof texture
+        }
+      } else if (player.currentWeapon === 'hammer' && hasItemInHotbar('hammer')) {
+        // Draw hammer in hand with animation
+        if (hammerImg.complete) {
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          
+          if (player.hammerAnimation > 0) {
+            // Animated hammer - starts in hand, moves to center with rotation, then thrusts forward
+            const animationProgress = 1 - player.hammerAnimation;
+            
+            // Phase 1: Move from hand to center with 90-degree rotation (0 to 0.95 seconds)
+            let handOffset = 0;
+            let rotation = 0;
+            if (animationProgress <= 0.95) {
+              const moveProgress = animationProgress / 0.95; // 0 to 1 over 0.95 seconds
+              handOffset = (1 - moveProgress) * 5; // Start 5 pixels to the side, move to center
+              rotation = moveProgress * Math.PI / 2; // Rotate 90 degrees (π/2 radians)
+            }
+            
+            // Phase 2: Forward thrust (0.95 to 1.0 seconds - 0.05 seconds)
+            let thrustDistance = 0;
+            if (animationProgress > 0.95) {
+              const thrustProgress = (animationProgress - 0.95) / 0.05; // 0 to 1 over 0.05 seconds
+              thrustDistance = thrustProgress * 60; // 60 pixels forward thrust
+            }
+            
+            // Apply hand offset, rotation, and thrust
+            ctx.translate(handOffset, 0);
+            ctx.rotate(rotation);
+            ctx.translate(thrustDistance, 0);
+            ctx.drawImage(hammerImg, player.radius - 25, -36, 66, 66); // Closer to body
+          } else {
+            // Normal hammer position (in hand)
+            ctx.translate(5, 0); // Much reduced hand offset to move very close to center
+            ctx.drawImage(hammerImg, player.radius - 25, -36, 66, 66); // Closer to body
+          }
+          
+          ctx.restore();
+          
+          // Draw hammer hitbox during thrust phase
+          const animationProgress = 1 - player.hammerAnimation;
+          if (animationProgress > 0.95) {
+            const thrustProgress = (animationProgress - 0.95) / 0.05; // 0 to 1 over 0.05 seconds
+            const baseDistance = player.radius + 20; // Closer base distance
+            const thrustDistance = thrustProgress * 60;
+            const totalDistance = baseDistance + thrustDistance;
+            
+            // Draw hitbox circle
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.rotate(player.angle);
+            ctx.translate(totalDistance, 0);
+            
+            // Draw hitbox outline
+            ctx.beginPath();
+            ctx.arc(0, 0, 1, 0, Math.PI * 2);
+            ctx.strokeStyle = '#ff0000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw hitbox fill with transparency
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+            ctx.fill();
+            
+            ctx.restore();
+          }
+        } else {
+          // Fallback: draw a simple hammer with animation
+          ctx.save();
+          ctx.rotate(Math.PI / 2); // rotate to face forward
+          
+          if (player.hammerAnimation > 0) {
+            // Animated fallback hammer
+            const animationProgress = 1 - player.hammerAnimation;
+            
+            // Phase 1: Move from hand to center with rotation
+            let handOffset = 0;
+            let rotation = 0;
+            if (animationProgress <= 0.95) {
+              const moveProgress = animationProgress / 0.95;
+              handOffset = (1 - moveProgress) * 5; // Much reduced to 5 pixels
+              rotation = moveProgress * Math.PI / 2; // Rotate 90 degrees
+            }
+            
+            // Phase 2: Forward thrust
+            let thrustDistance = 0;
+            if (animationProgress > 0.95) {
+              const thrustProgress = (animationProgress - 0.95) / 0.05;
+              thrustDistance = thrustProgress * 60;
+            }
+            
+            // Apply hand offset, rotation, and thrust
+            ctx.translate(handOffset, 0);
+            ctx.rotate(rotation);
+            ctx.translate(thrustDistance, 0);
+            
+            // Draw hammer parts (closer to body)
+            ctx.fillStyle = '#888';
+            ctx.fillRect(player.radius - 25, -12, 9, 24); // handle closer to body
+            ctx.fillStyle = '#444';
+            ctx.fillRect(player.radius - 16, -18, 27, 15); // head closer to body
+          } else {
+            // Normal fallback hammer position (in hand)
+            ctx.translate(5, 0); // Much reduced hand offset to move very close to center
+            ctx.fillStyle = '#888';
+            ctx.fillRect(player.radius - 25, -12, 9, 24); // handle closer to body
+            ctx.fillStyle = '#444';
+            ctx.fillRect(player.radius - 16, -18, 27, 15); // head closer to body
+          }
+          
+          ctx.restore();
         }
       }
       
@@ -2023,6 +2816,17 @@ let craftingTables = []; // Array to track dropped crafting table items
               ctx.beginPath();
               ctx.arc(tileX + TILE_SIZE/2, tileY + TILE_SIZE/2, TILE_SIZE/3, 0, Math.PI * 2);
               ctx.fill();
+            }
+          } else if (cell.item === 'R') {
+            // Draw roof tile
+            if (roofTileImg.complete) {
+              ctx.drawImage(roofTileImg, tileX, tileY, TILE_SIZE, TILE_SIZE);
+            } else {
+              // Fallback: draw a simple roof tile
+              ctx.fillStyle = '#8B4513';
+              ctx.fillRect(tileX + TILE_SIZE/6, tileY + TILE_SIZE/6, TILE_SIZE * 2/3, TILE_SIZE * 2/3);
+              ctx.fillStyle = '#654321';
+              ctx.fillRect(tileX + TILE_SIZE/4, tileY + TILE_SIZE/4, TILE_SIZE/2, TILE_SIZE/2);
             }
           } else if (cell.item === 'T') {
             // Draw tree (2x2 size) - only draw on the top-left corner of the tree
@@ -2235,6 +3039,8 @@ let craftingTables = []; // Array to track dropped crafting table items
       initializeEnemies();
       // Initialize tree health
       initializeTreeHealth();
+      // Initialize boulder health
+      initializeBoulderHealth();
       // Hide import section
       document.getElementById('importSection').style.display = 'none';
       detectHouses();
@@ -2255,8 +3061,13 @@ let craftingTables = []; // Array to track dropped crafting table items
       initializeEnemies();
       // Initialize tree health
       initializeTreeHealth();
+      // Initialize boulder health
+      initializeBoulderHealth();
       player.maxHealth = 3; // Reset max health
       player.health = 3; // Reset current health
+      
+      // Update weapon flags based on inventory
+      updateCurrentWeaponFromHotbar();
       
       // Hide import section
       document.getElementById('importSection').style.display = 'none';
@@ -2287,6 +3098,11 @@ let craftingTables = []; // Array to track dropped crafting table items
       // Initialize enemies and tree health
       initializeEnemies();
       initializeTreeHealth();
+      // Initialize boulder health
+      initializeBoulderHealth();
+      
+      // Update weapon flags based on inventory
+      updateCurrentWeaponFromHotbar();
       
       // Hide import section
       document.getElementById('importSection').style.display = 'none';
@@ -2314,33 +3130,145 @@ let craftingTables = []; // Array to track dropped crafting table items
         worldData.push(rowData);
       }
       
-      // Biome system - 200x200 blocks alternating between pasture and forest
+      // Biome system - 200x200 blocks with 3 biomes: pasture, forest, mountain
       const BIOME_SIZE = 200;
       const iterations = 4;
       
       // Generate terrain based on biome
+      let pastureCount = 0, forestCount = 0, mountainCount = 0;
       for (let row = 0; row < MAP_ROWS; row++) {
         for (let col = 0; col < MAP_COLS; col++) {
           // Determine which biome this tile belongs to
           const biomeRow = Math.floor(row / BIOME_SIZE);
           const biomeCol = Math.floor(col / BIOME_SIZE);
-          const isForestBiome = (biomeRow + biomeCol) % 2 === 1; // Alternating pattern
+          const biomeSum = biomeRow + biomeCol;
+          const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
           
-          // Set water chance based on biome
-          const waterChance = isForestBiome ? 0.06 : 0.08; // Forest has less water
-          
-          if (Math.random() < waterChance) {
-            worldData[row][col].base = 'W';
+          if (biomeType === 0) {
+            pastureCount++;
+            // Pasture biome - grass only around edges, water in center
+            const edgeDistance = Math.min(
+              row % BIOME_SIZE,
+              col % BIOME_SIZE,
+              BIOME_SIZE - 1 - (row % BIOME_SIZE),
+              BIOME_SIZE - 1 - (col % BIOME_SIZE)
+            );
+            const isEdge = edgeDistance < 20; // 20 blocks from edge
+            
+            if (isEdge) {
+              // Edge area - mostly grass with some water
+              if (Math.random() < 0.08) {
+                worldData[row][col].base = 'W';
+              }
+            } else {
+              // Center area - mostly water with some grass
+              if (Math.random() < 0.85) {
+                worldData[row][col].base = 'W';
+              }
+            }
+          } else if (biomeType === 1) {
+            forestCount++;
+            // Forest biome - grass only around edges, water in center
+            const edgeDistance = Math.min(
+              row % BIOME_SIZE,
+              col % BIOME_SIZE,
+              BIOME_SIZE - 1 - (row % BIOME_SIZE),
+              BIOME_SIZE - 1 - (col % BIOME_SIZE)
+            );
+            const isEdge = edgeDistance < 20; // 20 blocks from edge
+            
+            if (isEdge) {
+              // Edge area - less water
+              if (Math.random() < 0.06) {
+                worldData[row][col].base = 'W';
+              }
+            } else {
+              // Center area - mostly water
+              if (Math.random() < 0.80) {
+                worldData[row][col].base = 'W';
+              }
+            }
+          } else {
+            mountainCount++;
+            // Mountain biome - no water, special terrain distribution
+            const terrainRoll = Math.random();
+            if (terrainRoll < 0.90) {
+              worldData[row][col].base = 'D'; // 90% dirt
+            } else {
+              worldData[row][col].base = '.'; // 10% grass
+            }
+          }
+        }
+      }
+      console.log('Biome distribution - Pasture:', pastureCount, 'Forest:', forestCount, 'Mountain:', mountainCount);
+      
+      // Add fixed number of planks and bricks to mountain biomes
+      const totalBiomeCount = Math.ceil(MAP_ROWS / BIOME_SIZE) * Math.ceil(MAP_COLS / BIOME_SIZE);
+      const mountainBiomes = Math.floor(totalBiomeCount / 3); // 1/3 are mountain biomes
+      
+      for (let biome = 0; biome < mountainBiomes; biome++) {
+        // Find a random mountain biome
+        let biomeRow, biomeCol;
+        do {
+          biomeRow = Math.floor(Math.random() * Math.ceil(MAP_ROWS / BIOME_SIZE));
+          biomeCol = Math.floor(Math.random() * Math.ceil(MAP_COLS / BIOME_SIZE));
+        } while ((biomeRow + biomeCol) % 3 !== 2); // Keep trying until we get a mountain biome (biomeType 2)
+        
+        // Calculate biome boundaries
+        const biomeStartRow = biomeRow * BIOME_SIZE;
+        const biomeStartCol = biomeCol * BIOME_SIZE;
+        const biomeEndRow = Math.min(biomeStartRow + BIOME_SIZE, MAP_ROWS);
+        const biomeEndCol = Math.min(biomeStartCol + BIOME_SIZE, MAP_COLS);
+        
+        // Place 3 planks in this mountain biome
+        for (let plank = 0; plank < 3; plank++) {
+          let attempts = 0;
+          while (attempts < 50) {
+            const row = biomeStartRow + Math.floor(Math.random() * (biomeEndRow - biomeStartRow));
+            const col = biomeStartCol + Math.floor(Math.random() * (biomeEndCol - biomeStartCol));
+            
+            if (worldData[row][col].base === 'D' && worldData[row][col].item === null) {
+              worldData[row][col].base = 'O'; // Plank
+              break;
+            }
+            attempts++;
+          }
+        }
+        
+        // Place 2 bricks in this mountain biome
+        for (let brick = 0; brick < 2; brick++) {
+          let attempts = 0;
+          while (attempts < 50) {
+            const row = biomeStartRow + Math.floor(Math.random() * (biomeEndRow - biomeStartRow));
+            const col = biomeStartCol + Math.floor(Math.random() * (biomeEndCol - biomeStartCol));
+            
+            if (worldData[row][col].base === 'D' && worldData[row][col].item === null) {
+              worldData[row][col].base = 'X'; // Brick
+              break;
+            }
+            attempts++;
           }
         }
       }
       
-      // Apply cellular automata to create lakes
+      // Apply cellular automata to create lakes (only in pasture and forest biomes)
       for (let iter = 0; iter < iterations; iter++) {
         const newWorld = [];
         for (let row = 0; row < MAP_ROWS; row++) {
           const newRow = [];
           for (let col = 0; col < MAP_COLS; col++) {
+            // Determine biome for this location
+            const biomeRow = Math.floor(row / BIOME_SIZE);
+            const biomeCol = Math.floor(col / BIOME_SIZE);
+            const biomeSum = biomeRow + biomeCol;
+            const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
+            
+            // Skip cellular automata for mountain biomes (preserve mountain terrain)
+            if (biomeType === 2) {
+              newRow.push({ base: worldData[row][col].base, item: null });
+              continue;
+            }
+            
             let waterNeighbors = 0;
             
             // Count water neighbors in 5x5 area
@@ -2372,21 +3300,40 @@ let craftingTables = []; // Array to track dropped crafting table items
       const dirtChance = 0.12; // 12% chance for initial dirt (more frequent)
       const dirtIterations = 2; // Fewer iterations for smaller patches
       
-      // Initial random dirt placement
+      // Initial random dirt placement (only in pasture and forest biomes)
       for (let row = 0; row < MAP_ROWS; row++) {
         for (let col = 0; col < MAP_COLS; col++) {
-          if (worldData[row][col].base === '.' && Math.random() < dirtChance) { // Only on grass
+          // Determine biome for this location
+          const biomeRow = Math.floor(row / BIOME_SIZE);
+          const biomeCol = Math.floor(col / BIOME_SIZE);
+          const biomeSum = biomeRow + biomeCol;
+          const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
+          
+          // Skip dirt placement for mountain biomes (preserve mountain terrain)
+          if (biomeType !== 2 && worldData[row][col].base === '.' && Math.random() < dirtChance) {
             worldData[row][col].base = 'D';
           }
         }
       }
       
-      // Apply cellular automata to create natural dirt patches
+      // Apply cellular automata to create natural dirt patches (only in pasture and forest biomes)
       for (let iter = 0; iter < dirtIterations; iter++) {
         const newWorld = [];
         for (let row = 0; row < MAP_ROWS; row++) {
           const newRow = [];
           for (let col = 0; col < MAP_COLS; col++) {
+            // Determine biome for this location
+            const biomeRow = Math.floor(row / BIOME_SIZE);
+            const biomeCol = Math.floor(col / BIOME_SIZE);
+            const biomeSum = biomeRow + biomeCol;
+            const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
+            
+            // Skip cellular automata for mountain biomes (preserve mountain terrain)
+            if (biomeType === 2) {
+              newRow.push({ base: worldData[row][col].base, item: null });
+              continue;
+            }
+            
             let dirtNeighbors = 0;
             
             // Count dirt neighbors in 3x3 area (smaller area for more irregular shapes)
@@ -2427,15 +3374,17 @@ let craftingTables = []; // Array to track dropped crafting table items
       console.log('Dirt patches generated using cellular automata. Total dirt tiles placed:', dirtTilesPlaced);
       
       // Count final terrain types
-      let grassCount = 0, waterCount = 0, dirtCount = 0;
+      let grassCount = 0, waterCount = 0, dirtCount = 0, plankCount = 0, brickCount = 0;
       for (let row = 0; row < MAP_ROWS; row++) {
         for (let col = 0; col < MAP_COLS; col++) {
           if (worldData[row][col].base === '.') grassCount++;
           else if (worldData[row][col].base === 'W') waterCount++;
           else if (worldData[row][col].base === 'D') dirtCount++;
+          else if (worldData[row][col].base === 'O') plankCount++;
+          else if (worldData[row][col].base === 'X') brickCount++;
         }
       }
-      console.log('Terrain breakdown - Grass:', grassCount, 'Water:', waterCount, 'Dirt:', dirtCount);
+      console.log('Terrain breakdown - Grass:', grassCount, 'Water:', waterCount, 'Dirt:', dirtCount, 'Planks:', plankCount, 'Bricks:', brickCount);
       
       // Add random trees (2x2 trees) - biome-specific with spacing
       // Pasture: almost no trees (5% chance)
@@ -2449,10 +3398,11 @@ let craftingTables = []; // Array to track dropped crafting table items
         // Determine biome for this location
         const biomeRow = Math.floor(row / BIOME_SIZE);
         const biomeCol = Math.floor(col / BIOME_SIZE);
-        const isForestBiome = (biomeRow + biomeCol) % 2 === 1;
+        const biomeSum = biomeRow + biomeCol;
+        const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
         
-        // Only place trees in pasture biomes (5% chance)
-        if (!isForestBiome && Math.random() < 0.05) {
+        // Only place trees in pasture biomes (5% chance), no trees in mountain biomes
+        if (biomeType === 0 && Math.random() < 0.05) {
           // Check if area is clear
           if (worldData[row][col].item === null && worldData[row][col].base !== 'W' &&
               worldData[row+1][col].item === null && worldData[row+1][col].base !== 'W' &&
@@ -2475,10 +3425,11 @@ let craftingTables = []; // Array to track dropped crafting table items
         // Determine biome for this location
         const biomeRow = Math.floor(row / BIOME_SIZE);
         const biomeCol = Math.floor(col / BIOME_SIZE);
-        const isForestBiome = (biomeRow + biomeCol) % 2 === 1;
+        const biomeSum = biomeRow + biomeCol;
+        const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
         
-        // Only place trees in forest biomes
-        if (isForestBiome) {
+        // Only place trees in forest biomes, no trees in mountain biomes
+        if (biomeType === 1) {
           // Check if area is clear and no trees within 1 block (tighter spacing for dense forest)
           let canPlace = true;
           
@@ -2512,15 +3463,52 @@ let craftingTables = []; // Array to track dropped crafting table items
         }
       }
       
-      // Add random boulders (more frequent)
+      // Add random boulders - biome-specific
+      let boulderAttempts = 0, boulderSuccesses = 0;
+      
+      // Normal boulder spawning for pasture and forest biomes
       for (let i = 0; i < 1500; i++) {
         const row = Math.floor(Math.random() * MAP_ROWS);
         const col = Math.floor(Math.random() * MAP_COLS);
         
-        if (worldData[row][col].item === null && worldData[row][col].base !== 'W') {
+        // Determine biome for this location
+        const biomeRow = Math.floor(row / BIOME_SIZE);
+        const biomeCol = Math.floor(col / BIOME_SIZE);
+        const biomeSum = biomeRow + biomeCol;
+        const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
+        
+        // Only place boulders in pasture and forest biomes
+        if (biomeType !== 2 && worldData[row][col].item === null && 
+            (worldData[row][col].base === '.' || worldData[row][col].base === 'D')) {
           worldData[row][col].item = 'O';
+          boulderSuccesses++;
         }
+        boulderAttempts++;
       }
+      
+      // Massive boulder spawning specifically for mountain biomes
+      let mountainBoulderAttempts = 0, mountainBoulderSuccesses = 0;
+      for (let i = 0; i < 50000; i++) { // 50,000 attempts specifically for mountain biomes
+        const row = Math.floor(Math.random() * MAP_ROWS);
+        const col = Math.floor(Math.random() * MAP_COLS);
+        
+        // Determine biome for this location
+        const biomeRow = Math.floor(row / BIOME_SIZE);
+        const biomeCol = Math.floor(col / BIOME_SIZE);
+        const biomeSum = biomeRow + biomeCol;
+        const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
+        
+        // Only place boulders in mountain biomes
+        if (biomeType === 2 && worldData[row][col].item === null && 
+            (worldData[row][col].base === '.' || worldData[row][col].base === 'D')) {
+          worldData[row][col].item = 'O';
+          mountainBoulderSuccesses++;
+        }
+        mountainBoulderAttempts++;
+      }
+      
+      console.log('Boulder spawning - Total attempts:', boulderAttempts, 'Total successes:', boulderSuccesses);
+      console.log('Mountain boulder attempts:', mountainBoulderAttempts, 'Mountain boulder successes:', mountainBoulderSuccesses);
       
       // Add random bushes - biome-specific
       for (let i = 0; i < 32000; i++) {
@@ -2530,10 +3518,14 @@ let craftingTables = []; // Array to track dropped crafting table items
         // Determine biome for this location
         const biomeRow = Math.floor(row / BIOME_SIZE);
         const biomeCol = Math.floor(col / BIOME_SIZE);
-        const isForestBiome = (biomeRow + biomeCol) % 2 === 1;
+        const biomeSum = biomeRow + biomeCol;
+        const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
         
-        // Forest biomes have fewer bushes (42.5% chance vs 80% chance for pasture)
-        const bushChance = isForestBiome ? 0.425 : 0.8;
+        // Bush chances: pasture 80%, forest 42.5%, mountain 8% (1/10 of pasture)
+        let bushChance;
+        if (biomeType === 0) bushChance = 0.8; // Pasture
+        else if (biomeType === 1) bushChance = 0.425; // Forest
+        else bushChance = 0.08; // Mountain (1/10 of pasture)
         
         if (worldData[row][col].item === null && worldData[row][col].base !== 'W' && Math.random() < bushChance) {
           worldData[row][col].item = 'B';
@@ -2564,34 +3556,75 @@ let craftingTables = []; // Array to track dropped crafting table items
 
       
       // Add random item pickups (no weapons)
-      const items = ['H']; // blue heart only
-      for (let i = 0; i < 200; i++) {
+      const items = ['H']; // chess pieces
+      // --- Normal chess placement (reduced frequency, not on planks) ---
+      for (let i = 0; i < 500; i++) { // Reduced to 500 for performance (1/10 as often)
         const row = Math.floor(Math.random() * MAP_ROWS);
         const col = Math.floor(Math.random() * MAP_COLS);
         const item = items[Math.floor(Math.random() * items.length)];
-        
-        if (worldData[row][col].item === null && worldData[row][col].base !== 'W') {
+        // Only place on non-plank, non-water
+        if (worldData[row][col].item === null && worldData[row][col].base !== 'W' && worldData[row][col].base !== 'O') {
           worldData[row][col].item = item;
+          // --- Ensure each chess is filled with at least one item ---
+          const key = `${row},${col}`;
+          const storage = Array(12).fill().map(() => ({ type: null, count: 0 }));
+          populateChessWithAtLeastOneItem(storage);
+          chessStorage.set(key, storage);
+          chessHealth.set(key, 2);
+        }
+      }
+      // --- Plank chess placement (10x frequency) ---
+      for (let i = 0; i < 5000; i++) { // Reduced to 5000 for performance (1/10 as often)
+        const row = Math.floor(Math.random() * MAP_ROWS);
+        const col = Math.floor(Math.random() * MAP_COLS);
+        if (worldData[row][col].item === null && worldData[row][col].base === 'O') {
+          worldData[row][col].item = 'H';
+          const key = `${row},${col}`;
+          const storage = Array(12).fill().map(() => ({ type: null, count: 0 }));
+          populateChessWithAtLeastOneItem(storage);
+          chessStorage.set(key, storage);
+          chessHealth.set(key, 2);
         }
       }
       
       // Add random enemies - biome-specific
       const enemyTypes = ['E', 'Z', 'M']; // red, blue, brown enemies
-      for (let i = 0; i < 150; i++) {
+      for (let i = 0; i < 1500; i++) { // Increased from 150 to 1500 (10x more enemies)
         const row = Math.floor(Math.random() * MAP_ROWS);
         const col = Math.floor(Math.random() * MAP_COLS);
         
         // Determine biome for this location
         const biomeRow = Math.floor(row / BIOME_SIZE);
         const biomeCol = Math.floor(col / BIOME_SIZE);
-        const isForestBiome = (biomeRow + biomeCol) % 2 === 1;
+        const biomeSum = biomeRow + biomeCol;
+        const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
         
-        // Forest biomes have more enemies (80% chance vs 40% chance)
-        const enemyChance = isForestBiome ? 0.8 : 0.4;
+        // Enemy chances: pasture 40%, forest 80%, mountain 40%
+        let enemyChance;
+        if (biomeType === 0) enemyChance = 0.4; // Pasture
+        else if (biomeType === 1) enemyChance = 0.8; // Forest
+        else enemyChance = 0.4; // Mountain (same as pasture)
         
         if (worldData[row][col].item === null && worldData[row][col].base !== 'W' && Math.random() < enemyChance) {
           const enemyType = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
           worldData[row][col].item = enemyType;
+        }
+      }
+      
+      // Add many slingshot enemies specifically to mountain biomes
+      for (let i = 0; i < 15000; i++) { // 15000 additional slingshot enemies for mountain biomes (5x more)
+        const row = Math.floor(Math.random() * MAP_ROWS);
+        const col = Math.floor(Math.random() * MAP_COLS);
+        
+        // Determine biome for this location
+        const biomeRow = Math.floor(row / BIOME_SIZE);
+        const biomeCol = Math.floor(col / BIOME_SIZE);
+        const biomeSum = biomeRow + biomeCol;
+        const biomeType = biomeSum % 3; // 0 = pasture, 1 = forest, 2 = mountain
+        
+        // Only spawn slingshot enemies in mountain biomes
+        if (biomeType === 2 && worldData[row][col].item === null && worldData[row][col].base !== 'W' && Math.random() < 0.6) {
+          worldData[row][col].item = 'M'; // Brown enemy (slingshot)
         }
       }
       
@@ -2606,7 +3639,7 @@ let craftingTables = []; // Array to track dropped crafting table items
       
       // Calculate number of pasture biomes
       const totalBiomes = Math.ceil(MAP_ROWS / BIOME_SIZE) * Math.ceil(MAP_COLS / BIOME_SIZE);
-      const pastureBiomes = Math.floor(totalBiomes / 2); // Half are pasture biomes
+      const pastureBiomes = Math.floor(totalBiomes / 3); // 1/3 are pasture biomes (biomeType 0)
       const totalHouses = pastureBiomes * 50; // 50 houses per pasture biome
       
       for (let house = 0; house < totalHouses; house++) {
@@ -2615,7 +3648,7 @@ let craftingTables = []; // Array to track dropped crafting table items
         do {
           biomeRow = Math.floor(Math.random() * Math.ceil(MAP_ROWS / BIOME_SIZE));
           biomeCol = Math.floor(Math.random() * Math.ceil(MAP_COLS / BIOME_SIZE));
-        } while ((biomeRow + biomeCol) % 2 === 1); // Keep trying until we get a pasture biome (even sum)
+        } while ((biomeRow + biomeCol) % 3 !== 0); // Keep trying until we get a pasture biome (biomeType 0)
         
         // Calculate biome boundaries
         const biomeStartRow = biomeRow * BIOME_SIZE;
@@ -2673,6 +3706,37 @@ let craftingTables = []; // Array to track dropped crafting table items
                 }
               }
             }
+            
+            // 25% chance to add a chess piece to this house
+            if (Math.random() < 0.25) {
+              // Find all plank tiles in this house
+              const plankTiles = [];
+              for (let r = 0; r < housePattern.length; r++) {
+                for (let c = 0; c < housePattern[r].length; c++) {
+                  const worldRow = startRow + r;
+                  const worldCol = startCol + c;
+                  const tile = housePattern[r][c];
+                  
+                  if (tile === 'O' && worldData[worldRow][worldCol].item === null) {
+                    plankTiles.push({ row: worldRow, col: worldCol });
+                  }
+                }
+              }
+              
+              // Place chess on a random empty plank tile
+              if (plankTiles.length > 0) {
+                const randomPlank = plankTiles[Math.floor(Math.random() * plankTiles.length)];
+                worldData[randomPlank.row][randomPlank.col].item = 'H'; // Chess piece
+                
+                // Initialize chess health and storage
+                const key = `${randomPlank.row},${randomPlank.col}`;
+                const storage = Array(12).fill().map(() => ({ type: null, count: 0 }));
+                populateChessWithAtLeastOneItem(storage);
+                chessStorage.set(key, storage);
+                chessHealth.set(key, 2);
+              }
+            }
+            
             housePlaced = true;
           }
           
@@ -2772,6 +3836,20 @@ let craftingTables = []; // Array to track dropped crafting table items
               // Special case for top-left corner of map
               treeHealth.set(`${row},${col}`, 3);
             }
+          }
+        }
+      }
+    }
+
+    function initializeBoulderHealth() {
+      // Clear existing boulder health
+      boulderHealth.clear();
+      
+      // Initialize health for all boulders
+      for (let row = 0; row < worldData.length; row++) {
+        for (let col = 0; col < worldData[row].length; col++) {
+          if (worldData[row][col].item === 'O') {
+            boulderHealth.set(`${row},${col}`, 12);
           }
         }
       }
@@ -3674,7 +4752,7 @@ let craftingTables = []; // Array to track dropped crafting table items
           angleStep = franticAngleStep;
           localStartAngle = player.angle - arcAngle / 2;
         }
-        if (enemy.knockback || enemy.stunTimer > 0) return; // Skip all stunned/knocked back enemies
+        if ((enemy.knockback || enemy.stunTimer > 0) && enemy.type !== 'brown') return; // Only skip for non-brown enemies
         for (let i = 0; i <= Math.round(arcAngle / angleStep); i++) {
           const currentAngle = localStartAngle + (angleStep * i);
           for (let r = axeRangeStart; r <= axeRangeEnd; r += 8) {
@@ -4204,20 +5282,23 @@ let craftingTables = []; // Array to track dropped crafting table items
           // Show inventory item if it exists
           if (player.inventory[i] && player.inventory[i].type && player.inventory[i].count > 0) {
             const item = player.inventory[i];
-            let icon = '';
-            if (item.type === 'rock') icon = '🪨';
-            else if (item.type === 'wood') icon = '🪵';
-            else if (item.type === 'sword') icon = '🗡️';
-            else if (item.type === 'slingshot') icon = '🏹';
-            else if (item.type === 'axe') icon = '🪓';
-            else if (item.type === 'craftingTable') icon = '🛠️';
-            else if (item.type === 'chess') {
+            if (item.type === 'chess') {
               div.innerHTML = `<img src="chessClosed.png" style="width: 24px; height: 24px;">`;
+            } else if (item.type === 'plank') {
+              div.innerHTML = `<img src="plank.png" style="width: 24px; height: 24px;">`;
             } else {
-              icon = item.type;
+              let icon = '';
+              if (item.type === 'rock') icon = '🪨';
+              else if (item.type === 'wood') icon = '🪵';
+              else if (item.type === 'sword') icon = '🗡️';
+              else if (item.type === 'slingshot') icon = '🏹';
+              else if (item.type === 'axe') icon = '🪓';
+              else if (item.type === 'hammer') icon = '🔨';
+              else if (item.type === 'craftingTable') icon = '🛠️';
+              else icon = item.type;
+              
+              div.innerHTML = `<span style="font-size: 24px;">${icon}</span>`;
             }
-            
-            div.innerHTML = `<span style="font-size: 24px;">${icon}</span>`;
             
             if (item.count > 1) {
               const countDiv = document.createElement('div');
@@ -4232,26 +5313,75 @@ let craftingTables = []; // Array to track dropped crafting table items
               countDiv.style.borderRadius = '2px';
               div.appendChild(countDiv);
             }
-            
-            // Add click handler to move item to crafting grid
-            div.onclick = function() {
+          }
+          
+          // Add click handler for inventory slots in crafting menu (for ALL slots, empty or not)
+          div.onclick = function() {
+            // If we have a held item from crafting grid, drop it into this inventory slot
+            if (mouseHeldItem) {
+              // Check if this inventory slot can accept the item
+              if (!player.inventory[i].type || player.inventory[i].count === 0) {
+                // Empty slot - drop the item
+                if (keys['q'] || keys['Q']) {
+                  // Drop only one item
+                  player.inventory[i].type = mouseHeldItem.type;
+                  player.inventory[i].count = 1;
+                  ensureWeaponFlags(mouseHeldItem.type); // Ensure weapon flags are set
+                  mouseHeldItem.count--;
+                  if (mouseHeldItem.count <= 0) mouseHeldItem = null;
+                } else {
+                  // Drop all items
+                  player.inventory[i].type = mouseHeldItem.type;
+                  player.inventory[i].count = mouseHeldItem.count;
+                  ensureWeaponFlags(mouseHeldItem.type); // Ensure weapon flags are set
+                  mouseHeldItem = null;
+                }
+                renderCraftingMenu();
+                renderMouseHeldItem();
+              } else if (player.inventory[i].type === mouseHeldItem.type && 
+                         player.inventory[i].count < getMaxStackSize(player.inventory[i].type)) {
+                // Same type and can stack
+                let canAdd = getMaxStackSize(player.inventory[i].type) - player.inventory[i].count;
+                let toAdd = Math.min(canAdd, mouseHeldItem.count);
+                if (keys['q'] || keys['Q']) {
+                  // Drop only one item if Q is held
+                  toAdd = Math.min(toAdd, 1);
+                }
+                player.inventory[i].count += toAdd;
+                mouseHeldItem.count -= toAdd;
+                if (mouseHeldItem.count <= 0) mouseHeldItem = null;
+                renderCraftingMenu();
+                renderMouseHeldItem();
+              }
+            } else {
+              // No held item - try to pick up from this inventory slot and move to crafting grid
               if (player.inventory[i] && player.inventory[i].type && player.inventory[i].count > 0) {
                 // Find first empty crafting slot
                 for (let j = 0; j < 9; j++) {
                   if (!craftingMenuGrid[j].type || craftingMenuGrid[j].count === 0) {
-                    craftingMenuGrid[j].type = player.inventory[i].type;
-                    craftingMenuGrid[j].count = 1;
-                    player.inventory[i].count--;
-                    if (player.inventory[i].count <= 0) {
+                    if (keys['q'] || keys['Q']) {
+                      // Move all items when Q is held
+                      craftingMenuGrid[j].type = player.inventory[i].type;
+                      craftingMenuGrid[j].count = player.inventory[i].count;
                       player.inventory[i].type = null;
+                      player.inventory[i].count = 0;
+                    } else {
+                      // Move only one item by default
+                      craftingMenuGrid[j].type = player.inventory[i].type;
+                      craftingMenuGrid[j].count = 1;
+                      player.inventory[i].count--;
+                      if (player.inventory[i].count <= 0) {
+                        player.inventory[i].type = null;
+                        player.inventory[i].count = 0;
+                      }
                     }
                     renderCraftingMenu();
                     break;
                   }
                 }
               }
-            };
-          }
+            }
+          };
           
           inventoryGrid.appendChild(div);
         }
@@ -4300,23 +5430,33 @@ let craftingTables = []; // Array to track dropped crafting table items
       if (!result) return;
       
       // Check for different recipes based on the 3x3 grid
-      // Sword recipe: wood on bottom (slot 7), rock in middle (slot 4), rock on top (slot 1)
-      if (craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
+      // Sword recipe: rock in middle (slot 4), rock in top middle (slot 1), wood at bottom (slot 7)
+      if (craftingMenuGrid[1].type === 'rock' && craftingMenuGrid[1].count >= 1 &&
           craftingMenuGrid[4].type === 'rock' && craftingMenuGrid[4].count >= 1 &&
-          craftingMenuGrid[1].type === 'rock' && craftingMenuGrid[1].count >= 1) {
-        // Sword recipe
+          craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
+          (!craftingMenuGrid[0].type || craftingMenuGrid[0].type === null) &&
+          (!craftingMenuGrid[2].type || craftingMenuGrid[2].type === null) &&
+          (!craftingMenuGrid[3].type || craftingMenuGrid[3].type === null) &&
+          (!craftingMenuGrid[5].type || craftingMenuGrid[5].type === null) &&
+          (!craftingMenuGrid[6].type || craftingMenuGrid[6].type === null) &&
+          (!craftingMenuGrid[8].type || craftingMenuGrid[8].type === null)) {
+        // Sword recipe - rock blade in middle and top middle, wood handle at bottom
         result.innerHTML = `
           <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('sword')">
             <span style="font-size: 24px;">🗡️</span> Sword
           </div>
         `;
       }
-      // Axe recipe: rock on top (slot 1), rock on top-right (slot 2), rock on right (slot 5), wood in middle (slot 4), wood on bottom (slot 7)
+      // Axe recipe
       else if (craftingMenuGrid[1].type === 'rock' && craftingMenuGrid[1].count >= 1 &&
                craftingMenuGrid[2].type === 'rock' && craftingMenuGrid[2].count >= 1 &&
-               craftingMenuGrid[5].type === 'rock' && craftingMenuGrid[5].count >= 1 &&
                craftingMenuGrid[4].type === 'wood' && craftingMenuGrid[4].count >= 1 &&
-               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1) {
+               craftingMenuGrid[5].type === 'rock' && craftingMenuGrid[5].count >= 1 &&
+               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
+               (!craftingMenuGrid[0].type || craftingMenuGrid[0].type === null) &&
+               (!craftingMenuGrid[3].type || craftingMenuGrid[3].type === null) &&
+               (!craftingMenuGrid[6].type || craftingMenuGrid[6].type === null) &&
+               (!craftingMenuGrid[8].type || craftingMenuGrid[8].type === null)) {
         // Axe recipe
         result.innerHTML = `
           <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('axe')">
@@ -4324,11 +5464,16 @@ let craftingTables = []; // Array to track dropped crafting table items
           </div>
         `;
       }
-      // Slingshot recipe: wood on upper left (slot 0), upper right (slot 2), middle (slot 4), bottom (slot 7)
+      // Slingshot recipe
       else if (craftingMenuGrid[0].type === 'wood' && craftingMenuGrid[0].count >= 1 &&
+               craftingMenuGrid[1].type === 'rock' && craftingMenuGrid[1].count >= 1 &&
                craftingMenuGrid[2].type === 'wood' && craftingMenuGrid[2].count >= 1 &&
                craftingMenuGrid[4].type === 'wood' && craftingMenuGrid[4].count >= 1 &&
-               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1) {
+               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
+               (!craftingMenuGrid[3].type || craftingMenuGrid[3].type === null) &&
+               (!craftingMenuGrid[5].type || craftingMenuGrid[5].type === null) &&
+               (!craftingMenuGrid[6].type || craftingMenuGrid[6].type === null) &&
+               (!craftingMenuGrid[8].type || craftingMenuGrid[8].type === null)) {
         // Slingshot recipe
         result.innerHTML = `
           <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('slingshot')">
@@ -4336,7 +5481,7 @@ let craftingTables = []; // Array to track dropped crafting table items
           </div>
         `;
       }
-      // Chess recipe: wood on upper left (slot 0), upper (slot 1), upper right (slot 2), left (slot 3), right (slot 5), bottom left (slot 6), bottom middle (slot 7), bottom right (slot 8), rock in middle (slot 4)
+      // Chess recipe: wood frame with rock in center (all 8 wood slots + rock in middle)
       else if (craftingMenuGrid[0].type === 'wood' && craftingMenuGrid[0].count >= 1 &&
                craftingMenuGrid[1].type === 'wood' && craftingMenuGrid[1].count >= 1 &&
                craftingMenuGrid[2].type === 'wood' && craftingMenuGrid[2].count >= 1 &&
@@ -4346,10 +5491,78 @@ let craftingTables = []; // Array to track dropped crafting table items
                craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
                craftingMenuGrid[8].type === 'wood' && craftingMenuGrid[8].count >= 1 &&
                craftingMenuGrid[4].type === 'rock' && craftingMenuGrid[4].count >= 1) {
-        // Chess recipe
+        // Chess recipe - wood frame with rock in center
         result.innerHTML = `
           <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('chess')">
             <span style="font-size: 24px;">♟️</span> Chess
+          </div>
+        `;
+      }
+      // Wood Planks recipe: wood in all 9 slots (no rock in center)
+      else if (craftingMenuGrid[0].type === 'wood' && craftingMenuGrid[0].count >= 1 &&
+               craftingMenuGrid[1].type === 'wood' && craftingMenuGrid[1].count >= 1 &&
+               craftingMenuGrid[2].type === 'wood' && craftingMenuGrid[2].count >= 1 &&
+               craftingMenuGrid[3].type === 'wood' && craftingMenuGrid[3].count >= 1 &&
+               craftingMenuGrid[4].type === 'wood' && craftingMenuGrid[4].count >= 1 &&
+               craftingMenuGrid[5].type === 'wood' && craftingMenuGrid[5].count >= 1 &&
+               craftingMenuGrid[6].type === 'wood' && craftingMenuGrid[6].count >= 1 &&
+               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
+               craftingMenuGrid[8].type === 'wood' && craftingMenuGrid[8].count >= 1) {
+        // Wood Planks recipe - all wood, no rock
+        result.innerHTML = `
+          <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('woodPlanks')">
+            <span style="font-size: 24px;">🪵</span> Wood Planks (x3)
+          </div>
+        `;
+      }
+      // Brick recipe: all 9 slots filled with rock
+      else if (craftingMenuGrid[0].type === 'rock' && craftingMenuGrid[0].count >= 1 &&
+               craftingMenuGrid[1].type === 'rock' && craftingMenuGrid[1].count >= 1 &&
+               craftingMenuGrid[2].type === 'rock' && craftingMenuGrid[2].count >= 1 &&
+               craftingMenuGrid[3].type === 'rock' && craftingMenuGrid[3].count >= 1 &&
+               craftingMenuGrid[4].type === 'rock' && craftingMenuGrid[4].count >= 1 &&
+               craftingMenuGrid[5].type === 'rock' && craftingMenuGrid[5].count >= 1 &&
+               craftingMenuGrid[6].type === 'rock' && craftingMenuGrid[6].count >= 1 &&
+               craftingMenuGrid[7].type === 'rock' && craftingMenuGrid[7].count >= 1 &&
+               craftingMenuGrid[8].type === 'rock' && craftingMenuGrid[8].count >= 1) {
+        // Brick recipe - all rock
+        result.innerHTML = `
+          <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('brick')">
+            <span style="font-size: 24px;">🧱</span> Brick (x3)
+          </div>
+        `;
+      }
+      // Roof recipe: 4 planks in corners
+      else if (craftingMenuGrid[0].type === 'plank' && craftingMenuGrid[0].count >= 1 &&
+               craftingMenuGrid[2].type === 'plank' && craftingMenuGrid[2].count >= 1 &&
+               craftingMenuGrid[6].type === 'plank' && craftingMenuGrid[6].count >= 1 &&
+               craftingMenuGrid[8].type === 'plank' && craftingMenuGrid[8].count >= 1 &&
+               (!craftingMenuGrid[1].type || craftingMenuGrid[1].type === null) &&
+               (!craftingMenuGrid[3].type || craftingMenuGrid[3].type === null) &&
+               (!craftingMenuGrid[4].type || craftingMenuGrid[4].type === null) &&
+               (!craftingMenuGrid[5].type || craftingMenuGrid[5].type === null) &&
+               (!craftingMenuGrid[7].type || craftingMenuGrid[7].type === null)) {
+        // Roof recipe - 4 planks in corners
+        result.innerHTML = `
+          <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('roof')">
+            <span style="font-size: 24px;">🏠</span> Roof (x1)
+          </div>
+        `;
+      }
+      // Hammer recipe: 6 rocks (top row and middle row) and 1 wood (bottom center)
+      else if (craftingMenuGrid[0].type === 'rock' && craftingMenuGrid[0].count >= 1 &&
+               craftingMenuGrid[1].type === 'rock' && craftingMenuGrid[1].count >= 1 &&
+               craftingMenuGrid[2].type === 'rock' && craftingMenuGrid[2].count >= 1 &&
+               craftingMenuGrid[3].type === 'rock' && craftingMenuGrid[3].count >= 1 &&
+               craftingMenuGrid[4].type === 'rock' && craftingMenuGrid[4].count >= 1 &&
+               craftingMenuGrid[5].type === 'rock' && craftingMenuGrid[5].count >= 1 &&
+               craftingMenuGrid[7].type === 'wood' && craftingMenuGrid[7].count >= 1 &&
+               (!craftingMenuGrid[6].type || craftingMenuGrid[6].type === null) &&
+               (!craftingMenuGrid[8].type || craftingMenuGrid[8].type === null)) {
+        // Hammer recipe - 6 rocks in top and middle rows, wood handle in bottom center
+        result.innerHTML = `
+          <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('hammer')">
+            <span style="font-size: 24px;">🔨</span> Hammer
           </div>
         `;
       }
@@ -4362,11 +5575,11 @@ let craftingTables = []; // Array to track dropped crafting table items
     function craftItem(itemType) {
       // Handle crafting logic based on item type
       if (itemType === 'sword') {
-        // Remove ingredients: wood from bottom (slot 7), rock from middle (slot 4), rock from top (slot 1)
-        if (craftingMenuGrid[7].count > 0) {
-          craftingMenuGrid[7].count--;
-          if (craftingMenuGrid[7].count <= 0) {
-            craftingMenuGrid[7].type = null;
+        // Remove ingredients: rock in top middle (slot 1), rock in middle (slot 4), wood at bottom (slot 7)
+        if (craftingMenuGrid[1].count > 0) {
+          craftingMenuGrid[1].count--;
+          if (craftingMenuGrid[1].count <= 0) {
+            craftingMenuGrid[1].type = null;
           }
         }
         if (craftingMenuGrid[4].count > 0) {
@@ -4375,10 +5588,10 @@ let craftingTables = []; // Array to track dropped crafting table items
             craftingMenuGrid[4].type = null;
           }
         }
-        if (craftingMenuGrid[1].count > 0) {
-          craftingMenuGrid[1].count--;
-          if (craftingMenuGrid[1].count <= 0) {
-            craftingMenuGrid[1].type = null;
+        if (craftingMenuGrid[7].count > 0) {
+          craftingMenuGrid[7].count--;
+          if (craftingMenuGrid[7].count <= 0) {
+            craftingMenuGrid[7].type = null;
           }
         }
         
@@ -4397,7 +5610,7 @@ let craftingTables = []; // Array to track dropped crafting table items
         renderCraftingMenu();
       }
       else if (itemType === 'axe') {
-        // Remove ingredients: rock from top (slot 1), rock from top-right (slot 2), rock from right (slot 5), wood from middle (slot 4), wood from bottom (slot 7)
+        // Remove ingredients:
         if (craftingMenuGrid[1].count > 0) {
           craftingMenuGrid[1].count--;
           if (craftingMenuGrid[1].count <= 0) {
@@ -4410,16 +5623,16 @@ let craftingTables = []; // Array to track dropped crafting table items
             craftingMenuGrid[2].type = null;
           }
         }
-        if (craftingMenuGrid[5].count > 0) {
-          craftingMenuGrid[5].count--;
-          if (craftingMenuGrid[5].count <= 0) {
-            craftingMenuGrid[5].type = null;
-          }
-        }
         if (craftingMenuGrid[4].count > 0) {
           craftingMenuGrid[4].count--;
           if (craftingMenuGrid[4].count <= 0) {
             craftingMenuGrid[4].type = null;
+          }
+        }
+        if (craftingMenuGrid[5].count > 0) {
+          craftingMenuGrid[5].count--;
+          if (craftingMenuGrid[5].count <= 0) {
+            craftingMenuGrid[5].type = null;
           }
         }
         if (craftingMenuGrid[7].count > 0) {
@@ -4444,11 +5657,17 @@ let craftingTables = []; // Array to track dropped crafting table items
         renderCraftingMenu();
       }
       else if (itemType === 'slingshot') {
-        // Remove ingredients: wood from upper left (slot 0), upper right (slot 2), middle (slot 4), bottom (slot 7)
+        // Remove ingredients:
         if (craftingMenuGrid[0].count > 0) {
           craftingMenuGrid[0].count--;
           if (craftingMenuGrid[0].count <= 0) {
             craftingMenuGrid[0].type = null;
+          }
+        }
+        if (craftingMenuGrid[1].count > 0) {
+          craftingMenuGrid[1].count--;
+          if (craftingMenuGrid[1].count <= 0) {
+            craftingMenuGrid[1].type = null;
           }
         }
         if (craftingMenuGrid[2].count > 0) {
@@ -4549,6 +5768,157 @@ let craftingTables = []; // Array to track dropped crafting table items
           } else {
             player.inventory[slot].type = 'chess';
             player.inventory[slot].count = 1;
+          }
+        }
+        
+        renderCraftingMenu();
+      }
+      else if (itemType === 'woodPlanks') {
+        // Remove ingredients: wood from all 9 slots
+        for (let i = 0; i < 9; i++) {
+          if (craftingMenuGrid[i].count > 0) {
+            craftingMenuGrid[i].count--;
+            if (craftingMenuGrid[i].count <= 0) {
+              craftingMenuGrid[i].type = null;
+            }
+          }
+        }
+        
+        // Add 3 planks to inventory
+        for (let i = 0; i < 3; i++) {
+          const slot = findInventorySlot('plank', true);
+          if (slot !== -1) {
+            if (player.inventory[slot].type === 'plank') {
+              player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, getMaxStackSize('plank'));
+            } else {
+              player.inventory[slot].type = 'plank';
+              player.inventory[slot].count = 1;
+            }
+          }
+        }
+        
+        renderCraftingMenu();
+      }
+      else if (itemType === 'brick') {
+        // Remove ingredients: rock from all 9 slots
+        for (let i = 0; i < 9; i++) {
+          if (craftingMenuGrid[i].count > 0) {
+            craftingMenuGrid[i].count--;
+            if (craftingMenuGrid[i].count <= 0) {
+              craftingMenuGrid[i].type = null;
+            }
+          }
+        }
+        
+        // Add 3 bricks to inventory
+        for (let i = 0; i < 3; i++) {
+          const slot = findInventorySlot('brick', true);
+          if (slot !== -1) {
+            if (player.inventory[slot].type === 'brick') {
+              player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, getMaxStackSize('brick'));
+            } else {
+              player.inventory[slot].type = 'brick';
+              player.inventory[slot].count = 1;
+            }
+          }
+        }
+        
+        renderCraftingMenu();
+      }
+      else if (itemType === 'roof') {
+        // Remove ingredients: 4 planks in corners
+        if (craftingMenuGrid[0].count > 0) {
+          craftingMenuGrid[0].count--;
+          if (craftingMenuGrid[0].count <= 0) {
+            craftingMenuGrid[0].type = null;
+          }
+        }
+        if (craftingMenuGrid[2].count > 0) {
+          craftingMenuGrid[2].count--;
+          if (craftingMenuGrid[2].count <= 0) {
+            craftingMenuGrid[2].type = null;
+          }
+        }
+        if (craftingMenuGrid[6].count > 0) {
+          craftingMenuGrid[6].count--;
+          if (craftingMenuGrid[6].count <= 0) {
+            craftingMenuGrid[6].type = null;
+          }
+        }
+        if (craftingMenuGrid[8].count > 0) {
+          craftingMenuGrid[8].count--;
+          if (craftingMenuGrid[8].count <= 0) {
+            craftingMenuGrid[8].type = null;
+          }
+        }
+        
+        // Add crafted item to inventory
+        const slot = findInventorySlot('roof', false);
+        if (slot !== -1) {
+          if (player.inventory[slot].type === 'roof') {
+            player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, 1);
+          } else {
+            player.inventory[slot].type = 'roof';
+            player.inventory[slot].count = 1;
+          }
+        }
+        
+        renderCraftingMenu();
+      }
+      else if (itemType === 'hammer') {
+        // Remove ingredients: 6 rocks (top row and middle row) and 1 wood (bottom center)
+        if (craftingMenuGrid[0].count > 0) {
+          craftingMenuGrid[0].count--;
+          if (craftingMenuGrid[0].count <= 0) {
+            craftingMenuGrid[0].type = null;
+          }
+        }
+        if (craftingMenuGrid[1].count > 0) {
+          craftingMenuGrid[1].count--;
+          if (craftingMenuGrid[1].count <= 0) {
+            craftingMenuGrid[1].type = null;
+          }
+        }
+        if (craftingMenuGrid[2].count > 0) {
+          craftingMenuGrid[2].count--;
+          if (craftingMenuGrid[2].count <= 0) {
+            craftingMenuGrid[2].type = null;
+          }
+        }
+        if (craftingMenuGrid[3].count > 0) {
+          craftingMenuGrid[3].count--;
+          if (craftingMenuGrid[3].count <= 0) {
+            craftingMenuGrid[3].type = null;
+          }
+        }
+        if (craftingMenuGrid[4].count > 0) {
+          craftingMenuGrid[4].count--;
+          if (craftingMenuGrid[4].count <= 0) {
+            craftingMenuGrid[4].type = null;
+          }
+        }
+        if (craftingMenuGrid[5].count > 0) {
+          craftingMenuGrid[5].count--;
+          if (craftingMenuGrid[5].count <= 0) {
+            craftingMenuGrid[5].type = null;
+          }
+        }
+        if (craftingMenuGrid[7].count > 0) {
+          craftingMenuGrid[7].count--;
+          if (craftingMenuGrid[7].count <= 0) {
+            craftingMenuGrid[7].type = null;
+          }
+        }
+        
+        // Add crafted item to inventory
+        const slot = findInventorySlot('hammer', false);
+        if (slot !== -1) {
+          if (player.inventory[slot].type === 'hammer') {
+            player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, 1);
+          } else {
+            player.inventory[slot].type = 'hammer';
+            player.inventory[slot].count = 1;
+            player.inventory[slot].durability = 80; // Full durability for new hammer
           }
         }
         
@@ -4703,6 +6073,7 @@ let craftingTables = []; // Array to track dropped crafting table items
               else if (item.type === 'sword') icon = '🗡️';
               else if (item.type === 'slingshot') icon = '🏹';
               else if (item.type === 'axe') icon = '🪓';
+              else if (item.type === 'hammer') icon = '🔨';
               else if (item.type === 'craftingTable') icon = '🛠️';
               else icon = item.type;
               
@@ -4722,18 +6093,68 @@ let craftingTables = []; // Array to track dropped crafting table items
               countDiv.style.borderRadius = '2px';
               div.appendChild(countDiv);
             }
-            
-            // Add click handler to move item to chess storage
-            div.onclick = function() {
+          }
+          
+          // Add click handler for inventory slots in chess menu (for ALL slots, empty or not)
+          div.onclick = function() {
+            // If we have a held item from chess storage, drop it into this inventory slot
+            if (mouseHeldItem) {
+              // Check if this inventory slot can accept the item
+              if (!player.inventory[i].type || player.inventory[i].count === 0) {
+                // Empty slot - drop the item
+                if (keys['q'] || keys['Q']) {
+                  // Drop only one item
+                  player.inventory[i].type = mouseHeldItem.type;
+                  player.inventory[i].count = 1;
+                  ensureWeaponFlags(mouseHeldItem.type); // Ensure weapon flags are set
+                  mouseHeldItem.count--;
+                  if (mouseHeldItem.count <= 0) mouseHeldItem = null;
+                } else {
+                  // Drop all items
+                  player.inventory[i].type = mouseHeldItem.type;
+                  player.inventory[i].count = mouseHeldItem.count;
+                  ensureWeaponFlags(mouseHeldItem.type); // Ensure weapon flags are set
+                  mouseHeldItem = null;
+                }
+                renderChessMenu(row, col);
+                renderMouseHeldItem();
+              } else if (player.inventory[i].type === mouseHeldItem.type && 
+                         player.inventory[i].count < getMaxStackSize(player.inventory[i].type)) {
+                // Same type and can stack
+                let canAdd = getMaxStackSize(player.inventory[i].type) - player.inventory[i].count;
+                let toAdd = Math.min(canAdd, mouseHeldItem.count);
+                if (keys['q'] || keys['Q']) {
+                  // Drop only one item if Q is held
+                  toAdd = Math.min(toAdd, 1);
+                }
+                player.inventory[i].count += toAdd;
+                mouseHeldItem.count -= toAdd;
+                if (mouseHeldItem.count <= 0) mouseHeldItem = null;
+                renderChessMenu(row, col);
+                renderMouseHeldItem();
+              }
+            } else {
+              // No held item - try to pick up from this inventory slot and move to chess storage
               if (player.inventory[i] && player.inventory[i].type && player.inventory[i].count > 0) {
                 // Find first empty chess storage slot
                 for (let j = 0; j < 12; j++) {
                   if (!storage[j].type || storage[j].count === 0) {
-                    storage[j].type = player.inventory[i].type;
-                    storage[j].count = 1;
-                    player.inventory[i].count--;
-                    if (player.inventory[i].count <= 0) {
+                    // Check if Q key is held for single item drop
+                    if (keys['q'] || keys['Q']) {
+                      // Drop only one item
+                      storage[j].type = player.inventory[i].type;
+                      storage[j].count = 1;
+                      player.inventory[i].count--;
+                      if (player.inventory[i].count <= 0) {
+                        player.inventory[i].type = null;
+                        player.inventory[i].count = 0;
+                      }
+                    } else {
+                      // Drop all items
+                      storage[j].type = player.inventory[i].type;
+                      storage[j].count = player.inventory[i].count;
                       player.inventory[i].type = null;
+                      player.inventory[i].count = 0;
                     }
                     chessStorage.set(key, storage);
                     renderChessMenu(row, col);
@@ -4741,8 +6162,8 @@ let craftingTables = []; // Array to track dropped crafting table items
                   }
                 }
               }
-            };
-          }
+            }
+          };
           
           inventoryGrid.appendChild(div);
         }
@@ -4898,6 +6319,14 @@ let craftingTables = []; // Array to track dropped crafting table items
             div.innerHTML = `<img src="craftingTable.png" style="width: 40px; height: 40px;">`;
           } else if (slot.type === 'chess') {
             div.innerHTML = `<img src="chessClosed.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'plank') {
+            div.innerHTML = `<img src="plank.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'brick') {
+            div.innerHTML = `<img src="brick.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'roof') {
+            div.innerHTML = `<img src="tile.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'hammer') {
+            div.innerHTML = `<img src="hammer.png" style="width: 40px; height: 40px;">`;
           } else {
           let icon = '';
           if (slot.type === 'rock') icon = '🪨';
@@ -4986,6 +6415,14 @@ let craftingTables = []; // Array to track dropped crafting table items
             div.innerHTML += `<img src="craftingTable.png" style="width: 40px; height: 40px;">`;
           } else if (slot.type === 'chess') {
             div.innerHTML += `<img src="chessClosed.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'plank') {
+            div.innerHTML += `<img src="plank.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'brick') {
+            div.innerHTML += `<img src="brick.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'roof') {
+            div.innerHTML += `<img src="tile.png" style="width: 40px; height: 40px;">`;
+          } else if (slot.type === 'hammer') {
+            div.innerHTML += `<img src="hammer.png" style="width: 40px; height: 40px;">`;
           } else {
             let icon = '';
             if (slot.type === 'rock') icon = '🪨';
@@ -5038,6 +6475,12 @@ let craftingTables = []; // Array to track dropped crafting table items
             div.innerHTML = `<img src="craftingTable.png" style="width: 32px; height: 32px;">`;
           } else if (slot.type === 'chess') {
             div.innerHTML = `<img src="chessClosed.png" style="width: 32px; height: 32px;">`;
+          } else if (slot.type === 'hammer') {
+            div.innerHTML = `<img src="hammer.png" style="width: 32px; height: 32px;">`;
+          } else if (slot.type === 'brick') {
+            div.innerHTML = `<img src="brick.png" style="width: 32px; height: 32px;">`;
+          } else if (slot.type === 'roof') {
+            div.innerHTML = `<img src="tile.png" style="width: 32px; height: 32px;">`;
           } else {
           let icon = '';
           if (slot.type === 'rock') icon = '🪨';
@@ -5126,8 +6569,12 @@ let craftingTables = []; // Array to track dropped crafting table items
       // Pick up item
       if (!mouseHeldItem && slot.type && slot.count > 0) {
         mouseHeldItem = { type: slot.type, count: slot.count };
+        if (slot.durability !== undefined) {
+          mouseHeldItem.durability = slot.durability;
+        }
         slot.type = null;
         slot.count = 0;
+        slot.durability = undefined;
         renderInventoryUI();
         renderMouseHeldItem();
         
@@ -5142,6 +6589,10 @@ let craftingTables = []; // Array to track dropped crafting table items
         if (!slot.type || slot.count === 0) {
           slot.type = mouseHeldItem.type;
           slot.count = mouseHeldItem.count;
+          if (mouseHeldItem.durability !== undefined) {
+            slot.durability = mouseHeldItem.durability;
+          }
+          ensureWeaponFlags(mouseHeldItem.type); // Ensure weapon flags are set
           mouseHeldItem = null;
           renderInventoryUI();
           renderMouseHeldItem();
@@ -5176,12 +6627,19 @@ let craftingTables = []; // Array to track dropped crafting table items
       else fromSlot = player.crafting[from.index];
       if (to.slotType === 'inventory') toSlot = player.inventory[to.index];
       else toSlot = player.crafting[to.index];
-      // Swap type and count
-      const temp = { type: toSlot.type, count: toSlot.count };
+      // Swap type, count, and durability
+      const temp = { type: toSlot.type, count: toSlot.count, durability: toSlot.durability };
       toSlot.type = fromSlot.type;
       toSlot.count = fromSlot.count;
+      toSlot.durability = fromSlot.durability;
       fromSlot.type = temp.type;
       fromSlot.count = temp.count;
+      fromSlot.durability = temp.durability;
+      
+      // Ensure weapon flags are set for any weapons moved to inventory
+      if (to.slotType === 'inventory') {
+        ensureWeaponFlags(toSlot.type);
+      }
       
       // Update current weapon based on selected hotbar slot
       updateCurrentWeaponFromHotbar();
@@ -5198,7 +6656,7 @@ let craftingTables = []; // Array to track dropped crafting table items
         oldWeapon: player.currentWeapon
       });
       if (selectedItem && selectedItem.type && selectedItem.count > 0) {
-        if (selectedItem.type === 'sword' || selectedItem.type === 'slingshot' || selectedItem.type === 'axe' || selectedItem.type === 'craftingTable' || selectedItem.type === 'chess') {
+        if (selectedItem.type === 'sword' || selectedItem.type === 'slingshot' || selectedItem.type === 'axe' || selectedItem.type === 'craftingTable' || selectedItem.type === 'chess' || selectedItem.type === 'plank' || selectedItem.type === 'brick' || selectedItem.type === 'roof' || selectedItem.type === 'hammer') {
           player.currentWeapon = selectedItem.type;
           console.log('Set weapon to:', player.currentWeapon);
         } else {
@@ -5236,7 +6694,7 @@ let craftingTables = []; // Array to track dropped crafting table items
 
     // Get max stack size for item type
     function getMaxStackSize(type) {
-      if (type === 'sword' || type === 'slingshot' || type === 'axe' || type === 'chess') {
+      if (type === 'sword' || type === 'slingshot' || type === 'axe' || type === 'chess' || type === 'hammer') {
         return 1; // Tools don't stack
       }
       return 16; // Resources stack to 16
@@ -5257,6 +6715,19 @@ let craftingTables = []; // Array to track dropped crafting table items
         }
       }
       return false;
+    }
+
+    // Helper function to ensure weapon flags are set when weapons are added to inventory
+    function ensureWeaponFlags(itemType) {
+      if (itemType === 'sword') {
+        player.hasSword = true;
+      } else if (itemType === 'axe') {
+        player.hasAxe = true;
+      } else if (itemType === 'slingshot') {
+        player.hasSlingshot = true;
+      } else if (itemType === 'hammer') {
+        player.hasHammer = true;
+      }
     }
 
     // Use item from hotbar (decrement count)
@@ -5335,6 +6806,50 @@ let craftingTables = []; // Array to track dropped crafting table items
               ctx.fillStyle = '#fff';
               ctx.fillText('CH', x + slotSize/2, y + slotSize/2 + 5);
             }
+          } else if (slot.type === 'plank') {
+            // Draw plank image
+            if (plankImg.complete) {
+              ctx.drawImage(plankImg, x + 10, y + 10, slotSize - 20, slotSize - 20);
+            } else {
+              // Fallback if image not loaded
+              ctx.font = '16px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillStyle = '#fff';
+              ctx.fillText('P', x + slotSize/2, y + slotSize/2 + 5);
+            }
+          } else if (slot.type === 'brick') {
+            // Draw brick image
+            if (brickImg.complete) {
+              ctx.drawImage(brickImg, x + 10, y + 10, slotSize - 20, slotSize - 20);
+            } else {
+              // Fallback if image not loaded
+              ctx.font = '16px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillStyle = '#fff';
+              ctx.fillText('B', x + slotSize/2, y + slotSize/2 + 5);
+            }
+          } else if (slot.type === 'roof') {
+            // Draw roof image
+            if (roofTileImg.complete) {
+              ctx.drawImage(roofTileImg, x + 10, y + 10, slotSize - 20, slotSize - 20);
+            } else {
+              // Fallback if image not loaded
+              ctx.font = '16px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillStyle = '#fff';
+              ctx.fillText('R', x + slotSize/2, y + slotSize/2 + 5);
+            }
+          } else if (slot.type === 'hammer') {
+            // Draw hammer image
+            if (hammerImg.complete) {
+              ctx.drawImage(hammerImg, x + 10, y + 10, slotSize - 20, slotSize - 20);
+            } else {
+              // Fallback if image not loaded
+              ctx.font = '16px Arial';
+              ctx.textAlign = 'center';
+              ctx.fillStyle = '#fff';
+              ctx.fillText('H', x + slotSize/2, y + slotSize/2 + 5);
+            }
           } else {
           let icon = '';
           if (slot.type === 'rock') icon = '🪨';
@@ -5355,6 +6870,30 @@ let craftingTables = []; // Array to track dropped crafting table items
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'right';
             ctx.fillText(slot.count.toString(), x + slotSize - 5, y + slotSize - 5);
+          }
+          
+          // Draw durability bar for hammer
+          if (slot.type === 'hammer' && slot.durability !== undefined) {
+            const maxDurability = 80;
+            const durabilityPercent = slot.durability / maxDurability;
+            const barWidth = slotSize - 10;
+            const barHeight = 4;
+            const barX = x + 5;
+            const barY = y + slotSize - 8;
+            
+            // Background bar
+            ctx.fillStyle = '#333';
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+            
+            // Durability bar
+            if (durabilityPercent > 0.5) {
+              ctx.fillStyle = '#4CAF50'; // Green for high durability
+            } else if (durabilityPercent > 0.25) {
+              ctx.fillStyle = '#FF9800'; // Orange for medium durability
+            } else {
+              ctx.fillStyle = '#F44336'; // Red for low durability
+            }
+            ctx.fillRect(barX, barY, barWidth * durabilityPercent, barHeight);
           }
         }
         
@@ -5382,6 +6921,19 @@ let craftingTables = []; // Array to track dropped crafting table items
         if (mouseHeldItem.type === 'chess') {
           held.innerHTML = `<img src="chessClosed.png" style="width:32px;height:32px;">` +
             (mouseHeldItem.count > 1 ? `<span style="color:#fff;font-size:16px;position:absolute;right:0;bottom:0;">${mouseHeldItem.count}</span>` : '');
+        } else if (mouseHeldItem.type === 'plank') {
+          held.innerHTML = `<img src="plank.png" style="width:32px;height:32px;">` +
+            (mouseHeldItem.count > 1 ? `<span style="color:#fff;font-size:16px;position:absolute;right:0;bottom:0;">${mouseHeldItem.count}</span>` : '');
+        } else if (mouseHeldItem.type === 'brick') {
+          held.innerHTML = `<img src="brick.png" style="width:32px;height:32px;">` +
+            (mouseHeldItem.count > 1 ? `<span style="color:#fff;font-size:16px;position:absolute;right:0;bottom:0;">${mouseHeldItem.count}</span>` : '');
+        } else if (mouseHeldItem.type === 'roof') {
+          held.innerHTML = `<img src="tile.png" style="width:32px;height:32px;">` +
+            (mouseHeldItem.count > 1 ? `<span style="color:#fff;font-size:16px;position:absolute;right:0;bottom:0;">${mouseHeldItem.count}</span>` : '');
+        } else if (mouseHeldItem.type === 'hammer') {
+          held.innerHTML = `<img src="hammer.png" style="width:32px;height:32px;">` +
+            (mouseHeldItem.count > 1 ? `<span style="color:#fff;font-size:16px;position:absolute;right:0;bottom:0;">${mouseHeldItem.count}</span>` : '') +
+            (mouseHeldItem.durability !== undefined ? `<span style="color:#fff;font-size:12px;position:absolute;left:0;bottom:0;background:rgba(0,0,0,0.7);padding:1px 3px;border-radius:2px;">${mouseHeldItem.durability}/80</span>` : '');
         } else {
           let icon = '';
           if (mouseHeldItem.type === 'rock') icon = '🪨';
@@ -5450,6 +7002,58 @@ let craftingTables = []; // Array to track dropped crafting table items
     }
     // ... existing code ...
 
+    // Add this new function near populateChessWithItems:
+    function populateChessWithAtLeastOneItem(storage) {
+      // List of item types and their logic, as in populateChessWithItems
+      const itemTypes = [
+        { type: 'rock', count: 16, chance: 0.01 },
+        { type: 'wood', count: 16, chance: 0.01 },
+        { type: 'sword', count: 1, chance: 0.15 },
+        { type: 'axe', count: 1, chance: 0.05 },
+        { type: 'wood', count: 1, chance: 0.50 },
+        { type: 'rock', count: 1, chance: 0.50 },
+        { type: 'rock', count: 3, chance: 0.30 },
+        { type: 'wood', count: 3, chance: 0.30 },
+        { type: 'wood', count: 5, chance: 0.10 },
+        { type: 'wood', count: 5, chance: 0.10 },
+        { type: 'axe', count: 1, chance: 0.05 },
+        { type: 'slingshot', count: 1, chance: 0.10 },
+      ];
+      // Shuffle the itemTypes array
+      for (let i = itemTypes.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [itemTypes[i], itemTypes[j]] = [itemTypes[j], itemTypes[i]];
+      }
+      // Helper to find first empty slot
+      function findEmptySlot() {
+        for (let i = 0; i < storage.length; i++) {
+          if (!storage[i].type || storage[i].count === 0) return i;
+        }
+        return -1;
+      }
+      // Helper to add item
+      function addItem(type, count) {
+        const slot = findEmptySlot();
+        if (slot !== -1) {
+          storage[slot].type = type;
+          storage[slot].count = count;
+          return true;
+        }
+        return false;
+      }
+      let added = false;
+      for (const entry of itemTypes) {
+        if (Math.random() < entry.chance) {
+          if (addItem(entry.type, entry.count)) added = true;
+          if (findEmptySlot() === -1) break; // Stop if full
+        }
+      }
+      // If nothing was added, forcibly add a random item from the list
+      if (!added) {
+        const fallback = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+        addItem(fallback.type, fallback.count);
+      }
+    }
 
   </script>
 </body>

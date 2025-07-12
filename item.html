@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Item Builder - Shooter Game</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      margin: 0;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      text-align: center;
+      color: #4CAF50;
+      margin-bottom: 30px;
+    }
+    
+    .item-selector {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .item-selector select {
+      background: #333;
+      color: #fff;
+      border: 2px solid #4CAF50;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 16px;
+      width: 200px;
+    }
+    
+    .crafting-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 80px);
+      grid-template-rows: repeat(3, 80px);
+      gap: 5px;
+      margin: 20px auto;
+      width: fit-content;
+    }
+    
+    .crafting-slot {
+      background: #333;
+      border: 2px solid #666;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    
+    .crafting-slot:hover {
+      border-color: #4CAF50;
+      background: #3a3a3a;
+    }
+    
+    .crafting-slot.selected {
+      border-color: #4CAF50;
+      background: #2d4a2d;
+    }
+    
+    .slot-content {
+      font-size: 24px;
+      font-weight: bold;
+    }
+    
+    .slot-label {
+      position: absolute;
+      bottom: -20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: #888;
+    }
+    
+    .item-palette {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .palette-title {
+      margin-bottom: 15px;
+      color: #4CAF50;
+      font-weight: bold;
+    }
+    
+    .palette-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+      gap: 10px;
+    }
+    
+    .palette-item {
+      background: #333;
+      border: 2px solid #666;
+      border-radius: 5px;
+      padding: 10px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .palette-item:hover {
+      border-color: #4CAF50;
+      background: #3a3a3a;
+    }
+    
+    .palette-item.selected {
+      border-color: #4CAF50;
+      background: #2d4a2d;
+    }
+    
+    .palette-item .icon {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+    
+    .palette-item .name {
+      font-size: 10px;
+      color: #ccc;
+    }
+    
+    .recipe-info {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .recipe-title {
+      color: #4CAF50;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    
+    .recipe-description {
+      color: #ccc;
+      margin-bottom: 15px;
+    }
+    
+    .recipe-pattern {
+      font-family: monospace;
+      background: #333;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 15px;
+    }
+    
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .btn {
+      background: #4CAF50;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    
+    .btn:hover {
+      background: #45a049;
+    }
+    
+    .btn.secondary {
+      background: #666;
+    }
+    
+    .btn.secondary:hover {
+      background: #555;
+    }
+    
+    .btn.danger {
+      background: #f44336;
+    }
+    
+    .btn.danger:hover {
+      background: #da190b;
+    }
+    
+    .code-output {
+      background: #2a2a2a;
+      padding: 20px;
+      border-radius: 10px;
+      margin-top: 20px;
+    }
+    
+    .code-title {
+      color: #4CAF50;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+    
+    .code-content {
+      background: #1a1a1a;
+      padding: 15px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #ccc;
+      white-space: pre-wrap;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .copy-btn {
+      background: #2196F3;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    
+    .copy-btn:hover {
+      background: #1976D2;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 Item Builder - Crafting Recipe Editor</h1>
+    
+    <div class="item-selector">
+      <label for="itemSelect">Select Item to Edit:</label>
+      <select id="itemSelect" onchange="loadItem()">
+        <option value="sword">🗡️ Sword</option>
+        <option value="axe">🪓 Axe</option>
+        <option value="slingshot">🏹 Slingshot</option>
+        <option value="chess">♟️ Chess</option>
+        <option value="woodPlanks">🪵 Wood Planks</option>
+        <option value="brick">🧱 Brick</option>
+        <option value="roof">🏠 Roof</option>
+        <option value="hammer">🔨 Hammer</option>
+      </select>
+    </div>
+    
+    <div class="crafting-grid" id="craftingGrid">
+      <!-- 3x3 crafting grid will be generated here -->
+    </div>
+    
+    <div class="item-palette">
+      <div class="palette-title">Select Item Type:</div>
+      <div class="palette-items" id="paletteItems">
+        <!-- Item palette will be generated here -->
+      </div>
+    </div>
+    
+    <div class="recipe-info">
+      <div class="recipe-title">Current Recipe: <span id="currentItemName">Sword</span></div>
+      <div class="recipe-description" id="recipeDescription">
+        Rock in middle (slot 4), rock in top middle (slot 1), wood at bottom (slot 7)
+      </div>
+      <div class="recipe-pattern" id="recipePattern">
+        [ ] [R] [ ]
+        [ ] [R] [ ]
+        [ ] [W] [ ]
+      </div>
+    </div>
+    
+    <div class="controls">
+      <button class="btn" onclick="clearGrid()">Clear Grid</button>
+      <button class="btn secondary" onclick="resetRecipe()">Reset to Default</button>
+      <button class="btn" onclick="generateCode()">Generate Code</button>
+      <button class="btn danger" onclick="testRecipe()">Test Recipe</button>
+    </div>
+    
+    <div class="code-output" id="codeOutput" style="display: none;">
+      <div class="code-title">Generated Code:</div>
+      <div class="code-content" id="codeContent"></div>
+      <button class="copy-btn" onclick="copyCode()">Copy to Clipboard</button>
+    </div>
+  </div>
+
+  <script>
+    // Item definitions with their current recipes
+    const itemRecipes = {
+      sword: {
+        name: "Sword",
+        description: "Rock in middle (slot 4), rock in top middle (slot 1), wood at bottom (slot 7)",
+        pattern: [
+          [null, 'rock', null],
+          [null, 'rock', null],
+          [null, 'wood', null]
+        ],
+        slots: [1, 4, 7] // slots that need items
+      },
+      axe: {
+        name: "Axe",
+        description: "Rock blade (top-right corner) and wood handle (center column) - must NOT have rock in slot 0",
+        pattern: [
+          [null, 'rock', 'rock'],
+          [null, 'wood', null],
+          [null, 'wood', null]
+        ],
+        slots: [1, 2, 4, 7],
+        excludeSlots: [0] // slots that must be empty
+      },
+      slingshot: {
+        name: "Slingshot",
+        description: "Y-shape with wood - must NOT have wood in all corners",
+        pattern: [
+          [null, 'wood', null],
+          ['wood', 'wood', 'wood'],
+          [null, 'wood', null]
+        ],
+        slots: [1, 3, 4, 5, 7],
+        excludeSlots: [0, 2, 6, 8]
+      },
+      chess: {
+        name: "Chess",
+        description: "Wood frame with rock in center (all 8 wood slots + rock in middle)",
+        pattern: [
+          ['wood', 'wood', 'wood'],
+          ['wood', 'rock', 'wood'],
+          ['wood', 'wood', 'wood']
+        ],
+        slots: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      },
+      woodPlanks: {
+        name: "Wood Planks",
+        description: "Wood in all 9 slots (no rock in center)",
+        pattern: [
+          ['wood', 'wood', 'wood'],
+          ['wood', 'wood', 'wood'],
+          ['wood', 'wood', 'wood']
+        ],
+        slots: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      },
+      brick: {
+        name: "Brick",
+        description: "All 9 slots filled with rock",
+        pattern: [
+          ['rock', 'rock', 'rock'],
+          ['rock', 'rock', 'rock'],
+          ['rock', 'rock', 'rock']
+        ],
+        slots: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+      },
+      roof: {
+        name: "Roof",
+        description: "4 planks in corners",
+        pattern: [
+          ['plank', null, 'plank'],
+          [null, null, null],
+          ['plank', null, 'plank']
+        ],
+        slots: [0, 2, 6, 8],
+        excludeSlots: [1, 3, 4, 5, 7]
+      },
+      hammer: {
+        name: "Hammer",
+        description: "6 rocks (top row and middle row) and 1 wood (bottom center)",
+        pattern: [
+          ['rock', 'rock', 'rock'],
+          ['rock', 'rock', 'rock'],
+          [null, 'wood', null]
+        ],
+        slots: [0, 1, 2, 3, 4, 5, 7],
+        excludeSlots: [6, 8]
+      }
+    };
+
+    // Item palette with icons and names
+    const itemPalette = [
+      { type: null, icon: '⬜', name: 'Empty' },
+      { type: 'rock', icon: '🪨', name: 'Rock' },
+      { type: 'wood', icon: '🪵', name: 'Wood' },
+      { type: 'plank', icon: '📏', name: 'Plank' }
+    ];
+
+    let currentItem = 'sword';
+    let selectedSlot = null;
+    let selectedItemType = null;
+    let craftingGrid = Array(9).fill(null);
+
+    // Initialize the interface
+    function init() {
+      generateCraftingGrid();
+      generateItemPalette();
+      loadItem();
+    }
+
+    // Generate the 3x3 crafting grid
+    function generateCraftingGrid() {
+      const grid = document.getElementById('craftingGrid');
+      grid.innerHTML = '';
+      
+      for (let i = 0; i < 9; i++) {
+        const slot = document.createElement('div');
+        slot.className = 'crafting-slot';
+        slot.onclick = () => selectSlot(i);
+        
+        const content = document.createElement('div');
+        content.className = 'slot-content';
+        content.id = `slot${i}`;
+        content.textContent = '⬜';
+        
+        const label = document.createElement('div');
+        label.className = 'slot-label';
+        label.textContent = `Slot ${i}`;
+        
+        slot.appendChild(content);
+        slot.appendChild(label);
+        grid.appendChild(slot);
+      }
+    }
+
+    // Generate the item palette
+    function generateItemPalette() {
+      const palette = document.getElementById('paletteItems');
+      palette.innerHTML = '';
+      
+      itemPalette.forEach(item => {
+        const paletteItem = document.createElement('div');
+        paletteItem.className = 'palette-item';
+        paletteItem.onclick = () => selectItemType(item.type);
+        
+        const icon = document.createElement('div');
+        icon.className = 'icon';
+        icon.textContent = item.icon;
+        
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = item.name;
+        
+        paletteItem.appendChild(icon);
+        paletteItem.appendChild(name);
+        palette.appendChild(paletteItem);
+      });
+    }
+
+    // Select a crafting slot
+    function selectSlot(index) {
+      // Clear previous selection
+      document.querySelectorAll('.crafting-slot').forEach(slot => {
+        slot.classList.remove('selected');
+      });
+      
+      // Select new slot
+      document.querySelectorAll('.crafting-slot')[index].classList.add('selected');
+      selectedSlot = index;
+      
+      // If an item type is selected, place it
+      if (selectedItemType !== null) {
+        placeItem(index, selectedItemType);
+      }
+    }
+
+    // Select an item type from palette
+    function selectItemType(type) {
+      // Clear previous selection
+      document.querySelectorAll('.palette-item').forEach(item => {
+        item.classList.remove('selected');
+      });
+      
+      // Select new item
+      const paletteItems = document.querySelectorAll('.palette-item');
+      const index = itemPalette.findIndex(item => item.type === type);
+      if (index >= 0) {
+        paletteItems[index].classList.add('selected');
+      }
+      
+      selectedItemType = type;
+      
+      // If a slot is selected, place the item
+      if (selectedSlot !== null) {
+        placeItem(selectedSlot, type);
+      }
+    }
+
+    // Place an item in a slot
+    function placeItem(slotIndex, itemType) {
+      craftingGrid[slotIndex] = itemType;
+      
+      const slotContent = document.getElementById(`slot${slotIndex}`);
+      const item = itemPalette.find(item => item.type === itemType);
+      slotContent.textContent = item ? item.icon : '⬜';
+      
+      updateRecipeDisplay();
+    }
+
+    // Load an item's current recipe
+    function loadItem() {
+      currentItem = document.getElementById('itemSelect').value;
+      const recipe = itemRecipes[currentItem];
+      
+      // Update crafting grid
+      craftingGrid = Array(9).fill(null);
+      for (let i = 0; i < 9; i++) {
+        const row = Math.floor(i / 3);
+        const col = i % 3;
+        craftingGrid[i] = recipe.pattern[row][col];
+        
+        const slotContent = document.getElementById(`slot${i}`);
+        const item = itemPalette.find(item => item.type === recipe.pattern[row][col]);
+        slotContent.textContent = item ? item.icon : '⬜';
+      }
+      
+      // Update display
+      document.getElementById('currentItemName').textContent = recipe.name;
+      document.getElementById('recipeDescription').textContent = recipe.description;
+      updateRecipeDisplay();
+    }
+
+    // Update the recipe pattern display
+    function updateRecipeDisplay() {
+      let pattern = '';
+      for (let row = 0; row < 3; row++) {
+        let rowStr = '';
+        for (let col = 0; col < 3; col++) {
+          const index = row * 3 + col;
+          const itemType = craftingGrid[index];
+          
+          if (itemType === 'rock') rowStr += '[R] ';
+          else if (itemType === 'wood') rowStr += '[W] ';
+          else if (itemType === 'plank') rowStr += '[P] ';
+          else rowStr += '[ ] ';
+        }
+        pattern += rowStr.trim() + '\n';
+      }
+      
+      document.getElementById('recipePattern').textContent = pattern.trim();
+    }
+
+    // Clear the crafting grid
+    function clearGrid() {
+      craftingGrid = Array(9).fill(null);
+      for (let i = 0; i < 9; i++) {
+        const slotContent = document.getElementById(`slot${i}`);
+        slotContent.textContent = '⬜';
+      }
+      updateRecipeDisplay();
+    }
+
+    // Reset to default recipe
+    function resetRecipe() {
+      loadItem();
+    }
+
+    // Generate code for the current recipe
+    function generateCode() {
+      const recipe = itemRecipes[currentItem];
+      const requiredSlots = [];
+      const excludeSlots = [];
+      
+      // Find which slots have items and which must be empty
+      for (let i = 0; i < 9; i++) {
+        if (craftingGrid[i] !== null) {
+          requiredSlots.push({ slot: i, type: craftingGrid[i] });
+        }
+      }
+      
+      // Generate the condition code
+      let conditionCode = `// ${recipe.name} recipe\n`;
+      conditionCode += `if (`;
+      
+      const conditions = [];
+      requiredSlots.forEach(slot => {
+        conditions.push(`craftingMenuGrid[${slot.slot}].type === '${slot.type}' && craftingMenuGrid[${slot.slot}].count >= 1`);
+      });
+      
+      conditionCode += conditions.join(' &&\n               ');
+      conditionCode += ') {\n';
+      conditionCode += `  // ${recipe.name} recipe\n`;
+      conditionCode += `  result.innerHTML = \`\n`;
+      conditionCode += `    <div style="background: #4CAF50; padding: 10px; border-radius: 5px; cursor: pointer;" onclick="craftItem('${currentItem}')">\n`;
+      conditionCode += `      <span style="font-size: 24px;">${getItemIcon(currentItem)}</span> ${recipe.name}\n`;
+      conditionCode += `    </div>\n`;
+      conditionCode += `  \`;\n`;
+      conditionCode += `}`;
+      
+      // Generate the crafting logic code
+      let craftingCode = `if (itemType === '${currentItem}') {\n`;
+      craftingCode += `  // Remove ingredients:\n`;
+      
+      requiredSlots.forEach(slot => {
+        craftingCode += `  if (craftingMenuGrid[${slot.slot}].count > 0) {\n`;
+        craftingCode += `    craftingMenuGrid[${slot.slot}].count--;\n`;
+        craftingCode += `    if (craftingMenuGrid[${slot.slot}].count <= 0) {\n`;
+        craftingCode += `      craftingMenuGrid[${slot.slot}].type = null;\n`;
+        craftingCode += `    }\n`;
+        craftingCode += `  }\n`;
+      });
+      
+      craftingCode += `  \n`;
+      craftingCode += `  // Add crafted item to inventory\n`;
+      craftingCode += `  const slot = findInventorySlot('${currentItem}', false);\n`;
+      craftingCode += `  if (slot !== -1) {\n`;
+      craftingCode += `    if (player.inventory[slot].type === '${currentItem}') {\n`;
+      craftingCode += `      player.inventory[slot].count = Math.min(player.inventory[slot].count + 1, 1);\n`;
+      craftingCode += `    } else {\n`;
+      craftingCode += `      player.inventory[slot].type = '${currentItem}';\n`;
+      craftingCode += `      player.inventory[slot].count = 1;\n`;
+      craftingCode += `    }\n`;
+      craftingCode += `    player.has${currentItem.charAt(0).toUpperCase() + currentItem.slice(1)} = true;\n`;
+      craftingCode += `  }\n`;
+      craftingCode += `  \n`;
+      craftingCode += `  renderCraftingMenu();\n`;
+      craftingCode += `}`;
+      
+      const fullCode = `// Recipe Condition Code:\n${conditionCode}\n\n// Crafting Logic Code:\n${craftingCode}`;
+      
+      document.getElementById('codeContent').textContent = fullCode;
+      document.getElementById('codeOutput').style.display = 'block';
+    }
+
+    // Get item icon
+    function getItemIcon(itemType) {
+      const icons = {
+        sword: '🗡️',
+        axe: '🪓',
+        slingshot: '🏹',
+        chess: '♟️',
+        woodPlanks: '🪵',
+        brick: '🧱',
+        roof: '🏠',
+        hammer: '🔨'
+      };
+      return icons[itemType] || '📦';
+    }
+
+    // Copy code to clipboard
+    function copyCode() {
+      const codeContent = document.getElementById('codeContent').textContent;
+      navigator.clipboard.writeText(codeContent).then(() => {
+        alert('Code copied to clipboard!');
+      }).catch(err => {
+        console.error('Failed to copy code: ', err);
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = codeContent;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        alert('Code copied to clipboard!');
+      });
+    }
+
+    // Test the current recipe
+    function testRecipe() {
+      const recipe = itemRecipes[currentItem];
+      let isValid = true;
+      let issues = [];
+      
+      // Check required slots
+      for (let i = 0; i < 9; i++) {
+        const row = Math.floor(i / 3);
+        const col = i % 3;
+        const expected = recipe.pattern[row][col];
+        const actual = craftingGrid[i];
+        
+        if (expected !== actual) {
+          isValid = false;
+          if (expected !== null) {
+            issues.push(`Slot ${i} should have ${expected} but has ${actual || 'empty'}`);
+          }
+        }
+      }
+      
+      if (isValid) {
+        alert(`✅ ${recipe.name} recipe is valid!`);
+      } else {
+        alert(`❌ ${recipe.name} recipe has issues:\n\n${issues.join('\n')}`);
+      }
+    }
+
+    // Initialize when page loads
+    window.onload = init;
+  </script>
+</body>
+</html> 
